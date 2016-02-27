@@ -652,7 +652,7 @@ _print();
 
   
   current_time = millis();
- if ( current_time - start_time < 30000 &&  durationFlag == 1 )
+ if ( current_time - start_time < 60000 &&  durationFlag == 1 )
 //   if (abs(g_distance) > 5 && LATI != 0 && LONGI != 0 && target_lati != 0 && target_longi != 0 &&  durationFlag == 1)
     {
    // CheckBreakingCondition();

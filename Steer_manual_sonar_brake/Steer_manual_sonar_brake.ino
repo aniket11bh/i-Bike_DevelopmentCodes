@@ -11,7 +11,7 @@
 #define MAX_RESP_TIME_MS 40      // timeout - max time to wait for low voltage drop (higher value increases measuring distance at the price of slower sampling)
 #define DELAY_BETWEEN_TESTS_US 200 // echo cancelling time between sampling
 
-#define THRESHOLD 130
+#define THRESHOLD 20
 #define STOPPING_THRESHOLD 50
 
 #define LEAST_COUNT 5
@@ -24,7 +24,7 @@
 
 #define OPT 1
 #define OPT1 2 
-#define ANGLE_LIMIT 10
+#define ANGLE_LIMIT_STEER 5
 #define ANGLE_LIMIT_HEADING 5
 
 #define THETA_LIMIT 40
@@ -68,7 +68,7 @@ volatile int distSum1 = 0, distSum2 = 0;
 
 volatile int dist[2] ={1000, 1000};
 
-volatile int currentAngle = 0, headingAngle = 0;
+volatile int steerAngle = 0, headingAngle = 0;
 volatile int count = 0;
 volatile int flag = 0;
 volatile int Pulse_Count = 0; 
@@ -91,7 +91,7 @@ int theta;
 volatile int dataCnt = 0;
 
 /* variables for path retracing */
-int goal_heading = 45;
+int goal_heading = 0;
 double err_heading = 0;
 bool first_heading_data = true;
 
@@ -385,14 +385,14 @@ int sonarOutput()
    if(dist[0] < THRESHOLD && dist[1] < THRESHOLD)   // STOP
    {
 //     digitalWrite(STOPPIN, HIGH);
-     Serial.println("  Both within Threshold");
+     Serial.print("  Both within Threshold");
      return AMBIGIOUS;
    }  
    else if(dist[0] < THRESHOLD && dist[1] > THRESHOLD) // RIGHT
    {
      //setPin(LEDPIN);
      //digitalWrite(STOPPIN, HIGH);   
-     Serial.println("  Going Right");
+     Serial.print("  Going Right");
     // changeAngle(1);
      return RIGHT;
    }
@@ -400,7 +400,7 @@ int sonarOutput()
    {
      //setPin(LEDPIN);
      //digitalWrite(STOPPIN, HIGH); 
-     Serial.println("  Going Left");
+     Serial.print("  Going Left");
      //changeAngle(-1);
      return LEFT;
    }
@@ -413,10 +413,10 @@ int sonarOutput()
 
 void returnToZeroPosition()
 {
-  if(abs(currentAngle) > LEAST_COUNT)   // Returning to ZERO Position. Should be removed when operating along with camera.
+  if(abs(steerAngle) > LEAST_COUNT)   // Returning to ZERO Position. Should be removed when operating along with camera.
  {
-      Serial.println("  Returning");
-    if(currentAngle < 0)
+      Serial.print("  Returning");
+    if(steerAngle < 0)
     {
       changeRAngle(1);
       delay(20);
@@ -429,16 +429,16 @@ void returnToZeroPosition()
   } 
   else
  {
-   Serial.println("  Free");
+   Serial.print(" Stable at zero");
  } 
 }
 void followCameraOutput()
 {
-   if(theta < 0 && abs(currentAngle) < ANGLE_LIMIT)
+   if(theta < 0 && abs(steerAngle) < ANGLE_LIMIT_STEER)
     {
       changeAngle(1); // Check direction 1 or -1
     }
-    else if(theta > 0 && abs(currentAngle) < ANGLE_LIMIT)
+    else if(theta > 0 && abs(steerAngle) < ANGLE_LIMIT_STEER)
     {
       changeAngle(-1); // Check direction 1 or -1
     }
@@ -462,15 +462,15 @@ void planPath()
   }
   else
   {
-    if(sonarOut == RIGHT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT) // turn Right
+    if(sonarOut == RIGHT && steerAngle < ANGLE_LIMIT_STEER) // turn Right
     {
         //turn right to avoid obstacle
-        changeAngle(1); // Check direction 1 or -1
+        changeAngle(1); 
     }
-    else if(sonarOut == LEFT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT) // turn Left
+    else if(sonarOut == LEFT && steerAngle > -1*ANGLE_LIMIT_STEER) // turn Left
     {
         //turn left to avoid obstacle
-        changeAngle(-1); // Check direction 1 or -1
+        changeAngle(-1); 
     }
     else if(sonarOut == AMBIGIOUS)
     {
@@ -501,25 +501,25 @@ void planPath()
   }
 }
 
-void _print()
+void _print_sonar_data()
 {
    Serial.print(" SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
    Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
-   Serial.print("\t exec_time : "); Serial.print(exec_time); 
+//   Serial.print("\t exec_time : "); Serial.print(exec_time); 
 }
 
-void _print2()
+void _print_pi_data()
 {
 
       Serial.print("Lati_from_PI : "); Serial.print(lati_str);
       Serial.print("\t Longi_from_PI : "); Serial.print(longi_str);
-      Serial.print("\t Theta : "); Serial.println(theta);
+      Serial.print("\t Theta : "); Serial.print(theta);
 }
 
-void _print1()
+void _print_angle_data()
 {
    Serial.print("SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("\t CurrentAngle : "); Serial.println(currentAngle);
+   Serial.print("\t SteeringAngle : "); Serial.print(steerAngle);
 }
 
 void initializeSonar()
@@ -609,7 +609,6 @@ void handleDataFromPI()
  {
     //Serial.println(inputString2); 
     parse2();
-    _print2();
     sendDestinationDataToDrive();
     inputString2 = "";
     lati_str = "";
@@ -619,36 +618,55 @@ void handleDataFromPI()
   } 
 }
 
+void retracePath()
+{
+  // If condition for maintaining the Initial heading
+//  if (first_heading_data)
+//  {
+//    goal_heading = headingAngle;
+//    first_heading_data = false;
+//    Serial.println("first heading data ");
+//  }
+  err_heading = (goal_heading - headingAngle)*PI_APP/180 ;
+  err_heading = atan2(sin(err_heading),cos(err_heading))*180/PI_APP;
+  /* k*err_heading  is the angle to be given to the steer motor */
+  /* While here Rotate constantly steer motor */
+  returnToGoalHeading();
+  delay(40);
+}
+
+
 void returnToGoalHeading()
 {
   if(abs(err_heading) > LEAST_COUNT_HEADING )   // Returning to ZERO Position. Should be removed when operating along with camera.
  {
-    Serial.println("  Retracing Heading");
-    // if prints Retracing heading, but not going left/right => 1. currentAngle crossed angle_limit_heading
+    Serial.print("  Retracing Heading");
+    Serial.print(" \t ErrorHeading : "); Serial.print(err_heading);
+    // if prints Retracing heading, but not going left/right => 1. steerAngle crossed angle_limit_heading
    
     if(err_heading < 0)
     {
-      if ((-1*currentAngle) < ANGLE_LIMIT_HEADING)
+      if (steerAngle > -1*ANGLE_LIMIT_HEADING)
         {
-           Serial.print("Going Left");
+           Serial.print("\t Going Left");
            changeAngle(-1);
         }
-      else if((-1*currentAngle) > ANGLE_LIMIT_HEADING + ANGLE_LIMIT)
+      else if(steerAngle < -1*(ANGLE_LIMIT_HEADING + ANGLE_LIMIT_STEER -3 ))
         {
-           Serial.print("Going Right");
+           Serial.print("\t Going Right");
            changeAngle(1); 
         }
     }
     else if (err_heading > 0)
     {
-      if ((currentAngle) < ANGLE_LIMIT_HEADING )
+      if ((steerAngle) < ANGLE_LIMIT_HEADING )
         {
-           Serial.print("Going right");
+           Serial.print("\t Going right");
            changeAngle(1);
         }
-      else if((currentAngle) > ANGLE_LIMIT_HEADING + ANGLE_LIMIT )
+      else if((steerAngle) > (ANGLE_LIMIT_HEADING + ANGLE_LIMIT_STEER -3 ) )
         {
-           Serial.print("Going Left");
+           Serial.print("\t Going Left");
            changeAngle(-1); 
         }
     }
@@ -659,35 +677,25 @@ void returnToGoalHeading()
  } 
 }
 
-void retracePath()
-{
-  // If condition for maintaining the Initial heading
-  if (first_heading_data)
-  {
-    goal_heading = headingAngle;
-    first_heading_data = false;
-    Serial.println("first heading data ");
-  }
-  err_heading = (goal_heading - headingAngle)*PI_APP/180 ;
-  err_heading = atan2(sin(err_heading),cos(err_heading))*180/PI_APP;
-  /* k*err_heading  is the angle to be given to the steer motor */
-  /* While here Rotate constantly steer motor */
-  returnToGoalHeading();
-  delay(40);
-}
+
 
 void loop()
 {		
-  handleObstacle(1);
-  _print();   // Sonar data
-  _print1();  // Heading and steering angle data
-  //int k = sonarOutput();
+  handleObstacle(1);  // Store sonar data
+  
+  _print_sonar_data(); Serial.print("\t");   // Sonar data
+  _print_angle_data(); Serial.print("\t");   // Heading and steering angle data
+//  _print_pi_data();                          // Lati and longi from pi
+    
   planPath();
+  
 //  handleDataFromPI();
 //  delay(50);
 //  time = millis();
 //  exec_time = time - prev_time;
-//  prev_time = time;  								
+//  prev_time = time; 
+ 		
+  Serial.println();						
 }
 
 int serialEvent1() {
@@ -703,10 +711,10 @@ int serialEvent1() {
     }
     else if(dataCnt == 1)
     {
-       currentAngle = inData1; 
-       if(currentAngle >= 128)
+       steerAngle = inData1; 
+       if(steerAngle >= 128)
         {
-          currentAngle -= 256;
+          steerAngle -= 256;
         }
        dataCnt = 2;
     }
@@ -722,7 +730,6 @@ int serialEvent1() {
     else if(dataCnt == 3 && inData1 == 254) // STOP BYTE
     {
         dataCnt = 0;
-        //_print1();
     }
     
   }
