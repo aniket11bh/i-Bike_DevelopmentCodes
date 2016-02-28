@@ -17,7 +17,7 @@
 #define LEAST_COUNT 6
 #define LEAST_COUNT_HEADING 5
 
-#define ANGLE_LIMIT 12
+#define ANGLE_LIMIT 50
 #define ANGLE_LIMIT_HEADING 12
 
 #define THETA_LIMIT 40
@@ -28,7 +28,7 @@
 #define FAST_DUTY 100
 #define ULTRAFAST_DUTY 220
 #define BRAKE 0
-
+#define STOP_DRIVE 23  // same as stopppin
 #define RETURN_LIMIT1 (15 + LEAST_COUNT)
 #define RETURN_LIMIT2 (30 + LEAST_COUNT)
 
@@ -108,12 +108,12 @@ bool first_heading_data = true;
 
 
 // PID variables
-
+#define STEER_BRAKE 25 // same as steer_brake 25 
 int previousAngle = 0;
-int goal = 50;
-float k_p_cw = 2.2;
+int goal = 0; 
+float k_p_cw = 1;// 5.0; 
 float k_d_cw = 0.6;
-float k_p_ccw = 2.2;
+float k_p_ccw = 1; //5.0;
 float k_d_ccw = 0.6;
 
 /***********************************************************************************/
@@ -625,20 +625,27 @@ void retracePath()
   returnToGoalHeading();
 }
 
-
+/*****************************************************************PID FUNCTIONS***********************************************************************************/
 
 void gotoAngle(int goal)
 {
   int error = goal - currentAngle;
   int delta_error = currentAngle - previousAngle;
 
-  if (error > 0)
+  if (error > 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
-//    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
+     digitalWrite(STOP_DRIVE,LOW);
+    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
   }
-  else if(error < 0)
+  else if(error <= 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
-//    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
+     digitalWrite(STOP_DRIVE,LOW);
+    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
+  }
+  else 
+  {
+    driveMotor(0);
+    digitalWrite(STOP_DRIVE,HIGH);
   }
   
   Serial.print("   error :");
@@ -650,7 +657,7 @@ void gotoAngle(int goal)
 
   previousAngle = currentAngle;  
 }
-/*************************************************************************************/
+/*****************************************************************************************************************************************************************/
 /* PRINT FUNCTIONS */
 
 void _print()
@@ -658,7 +665,7 @@ void _print()
 //   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
 //   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
 //   Serial.print("  SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("  CurrentAngle : "); Serial.print(currentAngle);
+   Serial.print("  CurrentAngle : "); Serial.println(currentAngle);
 }
 
 void _print2()
@@ -679,17 +686,31 @@ void _print1()
 
 void setup()
 {
+  digitalWrite(STOP_DRIVE,LOW);
   Init();
+  pinMode(STEER_BRAKE,INPUT);
+  pinMode(STOP_DRIVE,OUTPUT);
   delay(2000);
+   
 }
 
 void loop()
 {   
 //  handleObstacle(1);
 //  planPath();
-  _print();   // Sonar and Angle data
-  gotoAngle(goal);
-  delay(20);                
+if (digitalRead(STEER_BRAKE) == HIGH)
+{
+  Serial.print("stopping");
+  //driveMotor(0);
+  }
+  
+ else { 
+  //Serial.print("ghusa");
+  gotoAngle(goal);}
+  
+  _print();   // Sonar and Angle data currently prints only Angle data
+  
+  //delay(20);                
 }
 
 /**********************************************************************************/
