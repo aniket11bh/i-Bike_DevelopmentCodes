@@ -635,12 +635,12 @@ void gotoAngle(int goal)
   if (error > 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
      digitalWrite(STOP_DRIVE,LOW);
-    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
+//    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
   }
   else if(error <= 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
      digitalWrite(STOP_DRIVE,LOW);
-    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
+//    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
   }
   else 
   {

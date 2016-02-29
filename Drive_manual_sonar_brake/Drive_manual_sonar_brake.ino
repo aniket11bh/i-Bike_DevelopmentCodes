@@ -344,7 +344,7 @@ void getRPY(int address)
 {
   getMPUdata(address);
 if (address == MPU_S)
-  { double num = 16000*sin(alpha)*(double)accY; 
+  { double num = 16384.0*sin(alpha)*(double)accY; 
     double den = ( ( (double)accX*cos(beta) + (double)accZ*sin(beta) ) * ( (double)accX*cos(beta) + (double)accZ*sin(beta) ) + (double)accY*(double)accY );
   // yaw = asin( num / den  )*180/PI_APP;
   yaw = atan2(-1*(double)accY,(double)accX)*360/PI_APP;
