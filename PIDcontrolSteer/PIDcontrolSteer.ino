@@ -1,5 +1,5 @@
-
 #define F_CPU 16000000
+
 #include <avr/io.h>
 #include <avr/wdt.h>
 #include <avr/interrupt.h>  /* for sei() */
@@ -57,10 +57,12 @@
 #define FREE 3
 #define AMBIGIOUS 4
 
+#define NUM_OF_READINGS 5
+
 #define EXT_INT1 21
 #define EXT_INT2 5
 
-#define NUM_OF_READINGS 5
+volatile float currentAngle = 0;
 
 volatile long result1 = 0;
 volatile unsigned char up1 = 0;
@@ -82,7 +84,7 @@ volatile int distSum1 = 0, distSum2 = 0;
 
 volatile int dist[2] ={1000, 1000};
 
-volatile int currentAngle = 0, headingAngle = 0;
+volatile int oldcurrentAngle=0, headingAngle = 0;
 volatile int count = 0;
 volatile int flag = 0;
 volatile int Pulse_Count = 0; 
@@ -92,8 +94,6 @@ volatile int k = 0;
 volatile int time = 0, prev_time = 0, exec_time = 0;
 
 volatile int stopmotor_count = 0;
-
-volatile float steerAngle = 0;
 
 String inputString1 = "";         // a string to hold incoming data
 boolean stringComplete1 = false;  // whether the string is complete
@@ -215,17 +215,27 @@ ISR(INT5_vect)
   }
 }
 
-
-void readAngle()
+ISR(INT2_vect)
 {
-  if(digitalRead(EXT_INT2) == HIGH)
+  Serial.print(" intr ");
+  if(digitalRead(EXT_INT2)==HIGH)
   {
-    steerAngle += 0.8;
+    currentAngle += 0.8; 
   }
-  else
+  else 
   {
-    steerAngle -= 0.8;
-  }
+    currentAngle -= 0.8; 
+  }  
+  
+}
+
+/*************************************************************************************/
+/* Encoder FUNCTIONS */
+
+void enableEncoder()
+{
+  EIMSK |= (1 << INT2);
+  EICRA |= (1 << ISC21) | (1 << ISC20);
 }
 
 /*************************************************************************************/
@@ -233,7 +243,7 @@ void readAngle()
 
 void enableSonar(int num)
 {
-  if(num == 1)
+  if(num == 1)  
  {
    // turn on interrupts for INT4, connect Echo to INT4
   EIMSK |= (1 << INT4); // enable interrupt on any(rising/droping) edge
@@ -398,7 +408,6 @@ void pinInit()
 
   pinMode(EXT_INT1,INPUT); // pin2 is int0
   pinMode(EXT_INT2,INPUT); // pin3 is int1
-  
 }
 
 void Init()
@@ -412,7 +421,6 @@ void Init()
   noInterrupts();
   tim3_Init();
   tim4_Init();
-  attachInterrupt(2 ,readAngle,RISING);
   interrupts(); // enable all(global) interrupts  
   Serial.begin(115200);
   Serial1.begin(115200);
@@ -420,6 +428,7 @@ void Init()
   
   enableSonar(1);
   enableSonar(2);
+  enableEncoder();
   
   digitalWrite(STOPPIN, LOW );
   
@@ -657,18 +666,18 @@ void gotoAngle(int goal)
 
   if (error > 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
-     digitalWrite(STOP_DRIVE,LOW);
+//     digitalWrite(STOP_DRIVE,LOW);
 //    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
   }
   else if(error <= 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
-     digitalWrite(STOP_DRIVE,LOW);
+//     digitalWrite(STOP_DRIVE,LOW);
 //    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
   }
   else 
   {
-    driveMotor(0);
-    digitalWrite(STOP_DRIVE,HIGH);
+//    driveMotor(0);
+//    digitalWrite(STOP_DRIVE,HIGH);
   }
   
 //  Serial.print("   error :");
@@ -676,10 +685,12 @@ void gotoAngle(int goal)
 //  Serial.print("   delta_error : ");
 //  Serial.print(delta_error);
 //  Serial.print("   goal :");
-//  Serial.println(goal);
+//  Serial.print(goal);
 
   previousAngle = currentAngle;  
 }
+
+
 /*****************************************************************************************************************************************************************/
 /* PRINT FUNCTIONS */
 
@@ -688,7 +699,7 @@ void _print()
 //   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
 //   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
 //   Serial.print("  SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("  CurrentAngle : "); Serial.println(steerAngle);
+   Serial.print("  CurrentAngle : "); Serial.println(currentAngle);
 }
 
 void _print2()
@@ -726,13 +737,14 @@ if (digitalRead(STEER_BRAKE) == HIGH)
     //driveMotor(0);
   }
   
-else 
-  { 
+ else 
+ { 
     //Serial.print("ghusa");
     gotoAngle(goal);
-  }
+ }
   
   _print();   // Sonar and Angle data currently prints only Angle data
+  
 }
 
 /**********************************************************************************/
@@ -750,10 +762,10 @@ int serialEvent1() {
     }
     else if(dataCnt == 1)
     {
-       currentAngle = inData1; 
-       if(currentAngle >= 128)
+       oldcurrentAngle = inData1; 
+       if(oldcurrentAngle >= 128)
         {
-          currentAngle -= 256;
+          oldcurrentAngle -= 256;
         }
        dataCnt = 2;
     }
@@ -842,6 +854,4 @@ void handleDataFromPI()
     stringComplete2 = false; 
   } 
 }
-
-/**********************************************************************************/
 
