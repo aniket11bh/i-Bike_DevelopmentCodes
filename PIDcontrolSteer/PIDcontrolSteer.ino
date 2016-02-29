@@ -57,6 +57,9 @@
 #define FREE 3
 #define AMBIGIOUS 4
 
+#define EXT_INT1 21
+#define EXT_INT2 5
+
 #define NUM_OF_READINGS 5
 
 volatile long result1 = 0;
@@ -89,6 +92,8 @@ volatile int k = 0;
 volatile int time = 0, prev_time = 0, exec_time = 0;
 
 volatile int stopmotor_count = 0;
+
+volatile float steerAngle = 0;
 
 String inputString1 = "";         // a string to hold incoming data
 boolean stringComplete1 = false;  // whether the string is complete
@@ -207,6 +212,19 @@ ISR(INT5_vect)
         result2 = (timerCounter2 * 65535 + TCNT4)/940;
         running2 = 0;
      }
+  }
+}
+
+
+void readAngle()
+{
+  if(digitalRead(EXT_INT2) == HIGH)
+  {
+    steerAngle += 0.8;
+  }
+  else
+  {
+    steerAngle -= 0.8;
   }
 }
 
@@ -377,6 +395,10 @@ void pinInit()
   
   pinMode(LEDPIN, OUTPUT);
   pinMode(STOPPIN, OUTPUT); 
+
+  pinMode(EXT_INT1,INPUT); // pin2 is int0
+  pinMode(EXT_INT2,INPUT); // pin3 is int1
+  
 }
 
 void Init()
@@ -390,6 +412,7 @@ void Init()
   noInterrupts();
   tim3_Init();
   tim4_Init();
+  attachInterrupt(2 ,readAngle,RISING);
   interrupts(); // enable all(global) interrupts  
   Serial.begin(115200);
   Serial1.begin(115200);
@@ -648,12 +671,12 @@ void gotoAngle(int goal)
     digitalWrite(STOP_DRIVE,HIGH);
   }
   
-  Serial.print("   error :");
-  Serial.print(error);
-  Serial.print("   delta_error : ");
-  Serial.print(delta_error);
-  Serial.print("   goal :");
-  Serial.println(goal);
+//  Serial.print("   error :");
+//  Serial.print(error);
+//  Serial.print("   delta_error : ");
+//  Serial.print(delta_error);
+//  Serial.print("   goal :");
+//  Serial.println(goal);
 
   previousAngle = currentAngle;  
 }
@@ -665,7 +688,7 @@ void _print()
 //   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
 //   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
 //   Serial.print("  SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("  CurrentAngle : "); Serial.println(currentAngle);
+   Serial.print("  CurrentAngle : "); Serial.println(steerAngle);
 }
 
 void _print2()
@@ -690,7 +713,6 @@ void setup()
   Init();
   pinMode(STEER_BRAKE,INPUT);
   pinMode(STOP_DRIVE,OUTPUT);
-  delay(2000);
    
 }
 
@@ -699,18 +721,18 @@ void loop()
 //  handleObstacle(1);
 //  planPath();
 if (digitalRead(STEER_BRAKE) == HIGH)
-{
-  Serial.print("stopping");
-  //driveMotor(0);
+  {
+    Serial.print("stopping");
+    //driveMotor(0);
   }
   
- else { 
-  //Serial.print("ghusa");
-  gotoAngle(goal);}
+else 
+  { 
+    //Serial.print("ghusa");
+    gotoAngle(goal);
+  }
   
   _print();   // Sonar and Angle data currently prints only Angle data
-  
-  //delay(20);                
 }
 
 /**********************************************************************************/
