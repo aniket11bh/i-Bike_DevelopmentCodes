@@ -116,9 +116,9 @@ bool first_heading_data = true;
 #define STEER_BRAKE 25 // same as steer_brake 25 
 int previousAngle = 0;
 int goal = 0; 
-float k_p_cw = 1;// 5.0; 
+float k_p_cw = 6.8;// 5.0; 
 float k_d_cw = 0.6;
-float k_p_ccw = 1; //5.0;
+float k_p_ccw = 6.8; //5.0;
 float k_d_ccw = 0.6;
 
 /***********************************************************************************/
@@ -174,8 +174,8 @@ ISR(TIMER4_OVF_vect)
 }
 
 // Echo Interrupt Handler for Left Sonar
-ISR(INT4_vect)
-{
+void sonar1Int()
+{ Serial.println("ghusa");
   if (running1) 
   { //accept interrupts only when sonar was started
     if (up1 == 0) 
@@ -195,7 +195,7 @@ ISR(INT4_vect)
 }
 
 // Echo Interrupt Handler for Right Sonar
-ISR(INT5_vect)
+void sonar2Int()
 {
   if (running2) 
   { //accept interrupts only when sonar was started
@@ -215,7 +215,7 @@ ISR(INT5_vect)
   }
 }
 
-ISR(INT2_vect)
+void readAngle()
 {
   Serial.print(" intr ");
   if(digitalRead(EXT_INT2)==HIGH)
@@ -233,9 +233,7 @@ ISR(INT2_vect)
 /* Encoder FUNCTIONS */
 
 void enableEncoder()
-{
-  EIMSK |= (1 << INT2);
-  EICRA |= (1 << ISC21) | (1 << ISC20);
+{attachInterrupt(2, readAngle,RISING);
 }
 
 /*************************************************************************************/
@@ -245,15 +243,13 @@ void enableSonar(int num)
 {
   if(num == 1)  
  {
-   // turn on interrupts for INT4, connect Echo to INT4
-  EIMSK |= (1 << INT4); // enable interrupt on any(rising/droping) edge
-  EICRB |= (1 << ISC40);      // Turns on INT4
+
+  attachInterrupt(4, sonar1Int,RISING);
  } 
  if(num == 2)
  {
   // turn on interrupts for INT5, connect Echo to INT5
-  EIMSK |= (1 << INT5); // enable interrupt on any(rising/droping) edge
-  EICRB |= (1 << ISC50);      // Turns on INT5
+  attachInterrupt(5, sonar2Int,RISING);
  }
 }
 
@@ -666,18 +662,22 @@ void gotoAngle(int goal)
 
   if (error > 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
-//     digitalWrite(STOP_DRIVE,LOW);
-//    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
+     Serial.print(" pid sends me to left   ");
+     
+     digitalWrite(STOP_DRIVE,LOW);
+    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
   }
   else if(error <= 0 && abs(currentAngle) < ANGLE_LIMIT)
   {
-//     digitalWrite(STOP_DRIVE,LOW);
-//    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
+    Serial.print(" pid sends me to right  ");
+    digitalWrite(STOP_DRIVE,LOW);
+    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
   }
   else 
   {
-//    driveMotor(0);
-//    digitalWrite(STOP_DRIVE,HIGH);
+    Serial.print(" pid stopped me    ");
+    driveMotor(0);
+    digitalWrite(STOP_DRIVE,HIGH);
   }
   
 //  Serial.print("   error :");
@@ -854,4 +854,3 @@ void handleDataFromPI()
     stringComplete2 = false; 
   } 
 }
-

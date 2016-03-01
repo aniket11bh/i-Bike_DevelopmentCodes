@@ -320,7 +320,7 @@ void getMPUdata(int address)
   Wire.endTransmission(false);
   Wire.requestFrom(address, 14, true);          // request a total of 14 registers
   
-  if (Wire.available()){
+//  if (Wire.available()){
   accX    = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
   accY    = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
   accZ    = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
@@ -329,35 +329,37 @@ void getMPUdata(int address)
   gyroY   = Wire.read() << 8 | Wire.read(); // 0x45 (GYRO_YOUT_H) & 0x46 (GYRO_YOUT_L)
   gyroZ   = Wire.read() << 8 | Wire.read(); // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
   
-  digitalWrite(STEER_BRAKE,LOW);
+//  digitalWrite(STEER_BRAKE,LOW);
   
-  }
-  else
-  {
-  
-   digitalWrite(STEER_BRAKE,HIGH);
-  }
+//  }
+//  else
+//  {
+//  
+//   digitalWrite(STEER_BRAKE,HIGH);
+//  }
    
 }
+
+
 // alpha 23 beta 15
 void getRPY(int address)
 {
   getMPUdata(address);
 if (address == MPU_S)
-  { double num = 16384.0*sin(alpha)*(double)accY; 
+  { double num = 16384*sin(alpha)*(double)accY; 
     double den = ( ( (double)accX*cos(beta) + (double)accZ*sin(beta) ) * ( (double)accX*cos(beta) + (double)accZ*sin(beta) ) + (double)accY*(double)accY );
-  // yaw = asin( num / den  )*180/PI_APP;
-  yaw = atan2(-1*(double)accY,(double)accX)*360/PI_APP;
-  Serial.print("  num   ");
-  Serial.print(sin(alpha));
-  Serial.print("  den  ");
-  Serial.print(beta);
-  Serial.print("  y   ");
-  Serial.print(accY);
-  Serial.print("  x   ");
-  Serial.print(accX);
-  Serial.print("  z   ");
-  Serial.print(accZ);
+   yaw = asin( num / den  )*360/PI_APP;
+//  yaw = atan2(-1*(double)accY,(double)accX)*360/PI_APP;
+//  Serial.print("  num   ");
+//  Serial.print(num);
+//  Serial.print("  den  ");
+//  Serial.print(den);
+//  Serial.print("  y   ");
+//  Serial.print(accY);
+//  Serial.print("  x   ");
+//  Serial.print(accX);
+//  Serial.print("  z   ");
+//  Serial.print(accZ);
 // 
   
   Serial.print("  yaw   ");
@@ -365,8 +367,8 @@ if (address == MPU_S)
   }
 else
 {
-// Serial.print("  y   ");
-//  Serial.print(accY);
+ Serial.print("  Roll  ");
+  Serial.print(roll);
 //  Serial.print("  x   ");
 //  Serial.print(accX);
   
@@ -517,7 +519,7 @@ void updateSteerAngle()
 void sendAngleDatatoSteer()
 {
   Serial1.write(255);
-  Serial1.write((int)averageHandleAngle); 
+  Serial1.write(23/*(int)averageHandleAngle*/); 
   Serial1.write((int)heading);
   Serial1.write(254);
 }
@@ -692,7 +694,7 @@ void loop()
   updateSteerAngle();
   sendAngleDatatoSteer();
 
-  gps_conditioning();
+//  gps_conditioning();
 //  handleGPSData();
 _print();
 
@@ -701,19 +703,20 @@ _print();
  if ( current_time - start_time < 60000 &&  durationFlag == 1 )
 //   if (abs(g_distance) > 5 && LATI != 0 && LONGI != 0 && target_lati != 0 && target_longi != 0 &&  durationFlag == 1)
     {
-    CheckBreakingCondition();
-    
-    if (drive_flag)
-    {
-     brakeFlag = LOW;
+//    CheckBreakingCondition();
+//    
+//    if (drive_flag)
+//    {
+//     brakeFlag = LOW;
       controlDrive(77);
-    }
-
-    else 
-     { controlDrive(0);
-      brakeFlag = HIGH;
-    }
+//    }
+//
+//    else 
+//     { controlDrive(0);
+//      brakeFlag = HIGH;
+//    }
    }
+  
   else if (  durationFlag == 1)
    {
    controlDrive(0);
