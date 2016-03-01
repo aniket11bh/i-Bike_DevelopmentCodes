@@ -267,9 +267,9 @@ void _print()
 {
       //Serial.print("Lati_from_PI : "); Serial.print(lati_str);
       //Serial.print("\t Longi_from_PI : "); Serial.print(longi_str);
-      Serial.print("\t Data from PI ");
-      Serial.print("\t handle angle : "); Serial.print(averageHandleAngle);
-      Serial.print("\t heading angle : "); Serial.print(heading);  
+//      Serial.print("\t Data from PI ");
+//      Serial.print("\t handle angle : "); Serial.print(averageHandleAngle);
+      Serial.print("\t heading angle : "); Serial.println(heading);  
       //Serial.println();
 
 }
@@ -350,27 +350,10 @@ if (address == MPU_S)
     double den = ( ( (double)accX*cos(beta) + (double)accZ*sin(beta) ) * ( (double)accX*cos(beta) + (double)accZ*sin(beta) ) + (double)accY*(double)accY );
    yaw = asin( num / den  )*360/PI_APP;
 //  yaw = atan2(-1*(double)accY,(double)accX)*360/PI_APP;
-//  Serial.print("  num   ");
-//  Serial.print(num);
-//  Serial.print("  den  ");
-//  Serial.print(den);
-//  Serial.print("  y   ");
-//  Serial.print(accY);
-//  Serial.print("  x   ");
-//  Serial.print(accX);
-//  Serial.print("  z   ");
-//  Serial.print(accZ);
-// 
-  
-  Serial.print("  yaw   ");
-  Serial.println(yaw);
+
   }
 else
 {
- Serial.print("  Roll  ");
-  Serial.print(roll);
-//  Serial.print("  x   ");
-//  Serial.print(accX);
   
 #ifdef RESTRICT_PITCH 
   roll  = atan2(accY, accZ) * 180/PI_APP;
@@ -461,7 +444,7 @@ heading = transformAngle(compAngleZ, compAngleZ0);
   //Serial.print("Pitch : "); Serial.print(compAngleY); Serial.print('\t');
   //  Serial.print("compAngleZ : "); Serial.print(compAngleZ);Serial.print('\t');
   Serial.print("Heading : "); Serial.print(heading);
-  Serial.print("\t Handle Angle:"); Serial.println(averageHandleAngle);
+//  Serial.print("\t Handle Angle:"); Serial.println(averageHandleAngle);
 #endif
 
 }

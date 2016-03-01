@@ -530,51 +530,51 @@ void planPath()
 {
   int sonarOut = sonarOutput();
        
-  if(sonarOut == FREE)
+//  if(sonarOut == FREE)
   {
     // Regain Heading using IMU + Magnetometer Data
     retracePath();
   }
-  else
-  {
-    if(sonarOut == RIGHT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT && abs(currentAngle) != 1000) 
-    {
-        //turn right to avoid obstacle
-        driveMotor(-MEDIUM_DUTY); // Check direction 1 or -1
-    }
-    else if(sonarOut == LEFT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT && abs(currentAngle) != 1000)
-    {
-        //turn left to avoid obstacle
-        driveMotor(MEDIUM_DUTY); // Check direction 1 or -1
-    }
-    else if(sonarOut == AMBIGIOUS)
-    {
-      if (dist[0] > STOPPING_THRESHOLD && dist[1] > STOPPING_THRESHOLD)
-      {
-         // turn a/c to nearer one.
-         stopmotor_count = 0; 
-         digitalWrite(STOPPIN,LOW);
-      }
-      else 
-      {
-        stopmotor_count++;
-        if (stopmotor_count > 4)
-        {
-           digitalWrite(STOPPIN, HIGH);
-           Serial.print("Stopping drive");
-        }
-        
-        else
-        {
-           digitalWrite(STOPPIN, LOW); 
-        }
-      }
-    }
-    else
-    {
-      driveMotor(BRAKE);
-    }
-  }
+//  else
+//  {
+//    if(sonarOut == RIGHT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT && abs(currentAngle) != 1000) 
+//    {
+//        //turn right to avoid obstacle
+//        driveMotor(-MEDIUM_DUTY); // Check direction 1 or -1
+//    }
+//    else if(sonarOut == LEFT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT && abs(currentAngle) != 1000)
+//    {
+//        //turn left to avoid obstacle
+//        driveMotor(MEDIUM_DUTY); // Check direction 1 or -1
+//    }
+//    else if(sonarOut == AMBIGIOUS)
+//    {
+//      if (dist[0] > STOPPING_THRESHOLD && dist[1] > STOPPING_THRESHOLD)
+//      {
+//         // turn a/c to nearer one.
+//         stopmotor_count = 0; 
+//         digitalWrite(STOPPIN,LOW);
+//      }
+//      else 
+//      {
+//        stopmotor_count++;
+//        if (stopmotor_count > 4)
+//        {
+//           digitalWrite(STOPPIN, HIGH);
+//           Serial.print("Stopping drive");
+//        }
+//        
+//        else
+//        {
+//           digitalWrite(STOPPIN, LOW); 
+//        }
+//      }
+//    }
+//    else
+//    {
+//      driveMotor(BRAKE);
+//    }
+//  }
 }
 
 void returnToGoalHeading()
@@ -652,8 +652,19 @@ void retracePath()
   
   err_heading = (goal_heading - headingAngle)*PI_APP/180 ;
   err_heading = atan2(sin(err_heading),cos(err_heading))*180/PI_APP;
- 
-  returnToGoalHeading();
+
+   if (err_heading > 0 )
+  {
+    Serial.print("Error heading +ve :"); Serial.println(err_heading);
+//    gotoAngle( -( kp_h_cw * err_heading + kd_h_cw * delta_err_heading) );
+    
+  }
+  else if(err_heading <= 0)
+  {
+    Serial.print("Error heading -ve :"); Serial.println(err_heading);
+//    gotoAngle( -( kp_h_ccw * err_heading + kd_h_ccw * delta_err_heading) );
+  }
+  
 }
 
 /*****************************************************************PID FUNCTIONS***********************************************************************************/
@@ -699,10 +710,8 @@ void gotoAngle(int goal)
 
 void _print()
 {
-//   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
-//   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
-//   Serial.print("  SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("  CurrentAngle : "); Serial.println(currentAngle);
+   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
+   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
 }
 
 void _print2()
@@ -733,7 +742,7 @@ void setup()
 void loop()
 {   
 //  handleObstacle(1);
-//  planPath();
+  planPath();
 if (digitalRead(STEER_BRAKE) == HIGH)
   {
     Serial.print("stopping");
@@ -746,7 +755,7 @@ if (digitalRead(STEER_BRAKE) == HIGH)
     gotoAngle(goal);
  }
   
-  _print();   // Sonar and Angle data currently prints only Angle data
+  _print1();   // Sonar and Angle data currently prints only Angle data
   
 }
 
@@ -780,6 +789,7 @@ int serialEvent1() {
           headingAngle -= 256;
         }
        dataCnt = 3;
+      
     }
     else if(dataCnt == 3 && inData1 == 254) // STOP BYTE
     {
