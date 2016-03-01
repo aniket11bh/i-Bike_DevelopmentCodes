@@ -35,14 +35,11 @@
 #define RETRACE_LIMIT1 (15 + LEAST_COUNT_HEADING)
 #define RETRACE_LIMIT2 (30 + LEAST_COUNT_HEADING)
 
-// Pin Declarations for DC Servo
-//#define PULPIN 11
-//#define DIRPIN 8
 
 // Pin Declatartions for Normal DC Motor
-#define DIRPIN 9
+#define DIRPIN 12
 #define PWMPIN 10
-#define BRAKEPIN 12 
+#define BRAKEPIN 9 
 
 #define LEDPIN 13
 #define STOPPIN 23
