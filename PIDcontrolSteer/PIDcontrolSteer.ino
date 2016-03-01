@@ -11,7 +11,7 @@
 #define MAX_RESP_TIME_MS 40      // timeout - max time to wait for low voltage drop (higher value increases measuring distance at the price of slower sampling)
 #define DELAY_BETWEEN_TESTS_US 200 // echo cancelling time between sampling
 
-#define THRESHOLD 1
+#define THRESHOLD 20
 #define STOPPING_THRESHOLD 50
 
 #define LEAST_COUNT 6
@@ -170,6 +170,21 @@ ISR(TIMER4_OVF_vect)
     }    
 }
 
+ISR(INT0_vect)
+{
+  Serial.print(" intr ");
+  if(digitalRead(EXT_INT2)==HIGH)
+  {
+    currentAngle += 0.8; 
+  }
+  else 
+  {
+    currentAngle -= 0.8; 
+  }  
+  
+}
+
+
 // Echo Interrupt Handler for Left Sonar
 void sonar1Int()
 { Serial.println("ghusa");
@@ -212,25 +227,14 @@ void sonar2Int()
   }
 }
 
-void readAngle()
-{
-  Serial.print(" intr ");
-  if(digitalRead(EXT_INT2)==HIGH)
-  {
-    currentAngle += 0.8; 
-  }
-  else 
-  {
-    currentAngle -= 0.8; 
-  }  
-  
-}
 
 /*************************************************************************************/
 /* Encoder FUNCTIONS */
 
 void enableEncoder()
-{attachInterrupt(2, readAngle,RISING);
+{
+  EIMSK |= (1 << INT0);
+  EICRA |= (1 << ISC01) | (1 << ISC00);
 }
 
 /*************************************************************************************/
@@ -238,15 +242,17 @@ void enableEncoder()
 
 void enableSonar(int num)
 {
-  if(num == 1)  
+  if(num == 1)
  {
-
-  attachInterrupt(4, sonar1Int,RISING);
+   // turn on interrupts for INT4, connect Echo to INT4
+  EIMSK |= (1 << INT4); // enable interrupt on any(rising/droping) edge
+  EICRB |= (1 << ISC40);      // Turns on INT4
  } 
  if(num == 2)
  {
   // turn on interrupts for INT5, connect Echo to INT5
-  attachInterrupt(5, sonar2Int,RISING);
+  EIMSK |= (1 << INT5); // enable interrupt on any(rising/droping) edge
+  EICRB |= (1 << ISC50);      // Turns on INT5
  }
 }
 
