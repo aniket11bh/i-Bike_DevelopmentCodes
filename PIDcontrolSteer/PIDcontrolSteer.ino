@@ -111,14 +111,14 @@ bool first_heading_data = true;
 // PID variables
 #define STEER_BRAKE 25 // same as steer_brake 25 
 float previousSteerError = 0;
-int goal = 0; 
-float k_p_cw = 6.2;// 5.0; 
+float steerGoal = 0;
+float k_p_cw = 3.8;// 5.0; 
 float k_d_cw = 0.6;
-float k_p_ccw = 7.0; //5.0;
-float k_d_ccw = 0.6;
+float k_p_ccw = 3.8; //5.0;
+float k_d_ccw = 0.7;
 
 int previousHeadingError = 0;
-int goal_heading = 0;
+float headingGoal = 0;
 float kp_h_cw = 1;
 float kd_h_cw = 0;
 float kp_h_ccw = 1;
@@ -477,8 +477,8 @@ void driveMotor(int torque)
 // Check and Decide whether Positive theta is towards left or right and vice versa
 void planPath()
 {
-  int sonarOut = sonarOutput();
-  gotoHeading(goal_heading);
+//  int sonarOut = sonarOutput();
+  gotoHeading(headingGoal);
 
 }
 
@@ -515,42 +515,50 @@ void gotoHeading(int goal_heading)
  
 void gotoAngle(int goal)
 {
+  if (abs(goal) > STEER_ANGLE_LIMIT)
+  {
+    if (goal > 0)
+    {
+      goal = STEER_ANGLE_LIMIT;
+      Serial.print("  goal angle excedded , New goal  = ");Serial.print(STEER_ANGLE_LIMIT);
+    }
+
+    else if(goal < 0 )
+    {
+      goal = -1*STEER_ANGLE_LIMIT;
+      Serial.print("  goal angle excedded , New goal  = ");Serial.print(-1*STEER_ANGLE_LIMIT);
+    }
+    
+  }
+  
   float error = goal - steerAngle;
   float delta_error = (error - previousSteerError);
   float integral_error = (error + previousSteerError);
   previousSteerError = error;
 
-  if (abs(steerAngle) < STEER_ANGLE_LIMIT)
+
+  if (error > LEAST_COUNT_STEER )
   {
-      if (error > LEAST_COUNT_STEER )
-      {
-         Serial.print(" pid sends me to left   ");
-         digitalWrite(STOP_DRIVE,LOW);
-         driveMotor(-1*( k_p_cw * error + k_d_cw * delta_error));
+     Serial.print(" pid sends me to left   ");
+     digitalWrite(STOP_DRIVE,LOW);
+     driveMotor(-1*( k_p_cw * error + k_d_cw * delta_error));
          
-      }
-      else if(error <= -1*LEAST_COUNT_STEER)
-      {
+  }
+  else if(error <= -1*LEAST_COUNT_STEER)
+  {
         
-        Serial.print(" pid sends me to right  ");
-        digitalWrite(STOP_DRIVE,LOW);
-        driveMotor(-1*( k_p_ccw * error + k_d_ccw * delta_error));
+    Serial.print(" pid sends me to right  ");
+    digitalWrite(STOP_DRIVE,LOW);
+    driveMotor(-1*( k_p_ccw * error + k_d_ccw * delta_error));
         
-      }
-      else 
-      {
-        Serial.print(" pid stopped me    ");
-        driveMotor(0);
-        digitalWrite(STOP_DRIVE,HIGH);
-      }
+  }
+  else 
+  {
+     Serial.print(" pid stopped me    ");
+     driveMotor(0);
+     digitalWrite(STOP_DRIVE,HIGH);
   }
 
-  else
-  {
-    // Stop motor
-    Serial.println("Angle limit exceeded ");
-    driveMotor(0);
-  }
 }
 
 /*****************************************************************************************************************************************************************/
@@ -589,20 +597,22 @@ void setup()
 
 void loop()
 {   
-//  handleObstacle(1);
-//  planPath();
-//if (digitalRead(STEER_BRAKE) == HIGH)
-//  {
-//    Serial.print("stopping");
-//    //driveMotor(0);
-//  }
-//  
-// else 
+
+/*  handleObstacle(1);
+  planPath();
+if (digitalRead(STEER_BRAKE) == HIGH)
+  {
+    Serial.print("stopping");
+    //driveMotor(0);
+  }
+  
+ else 
  { 
     //Serial.print("ghusa");
-    gotoAngle(goal);
- }
-  
+    
+ }*/
+//  planPath();
+//  gotoAngle(steerGoal);
   _print1();   // Sonar and Angle data currently prints only Angle data
   
 }
