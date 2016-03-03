@@ -1,5 +1,5 @@
-
 #define F_CPU 16000000
+
 #include <avr/io.h>
 #include <avr/wdt.h>
 #include <avr/interrupt.h>  /* for sei() */
@@ -11,13 +11,13 @@
 #define MAX_RESP_TIME_MS 40      // timeout - max time to wait for low voltage drop (higher value increases measuring distance at the price of slower sampling)
 #define DELAY_BETWEEN_TESTS_US 200 // echo cancelling time between sampling
 
-#define THRESHOLD 1
+#define THRESHOLD 20
 #define STOPPING_THRESHOLD 50
 
-#define LEAST_COUNT 6
-#define LEAST_COUNT_HEADING 5
+#define LEAST_COUNT_STEER 1
+#define LEAST_COUNT_HEADING 1
 
-#define ANGLE_LIMIT 50
+#define STEER_ANGLE_LIMIT 50
 #define ANGLE_LIMIT_HEADING 12
 
 #define THETA_LIMIT 40
@@ -29,20 +29,17 @@
 #define ULTRAFAST_DUTY 220
 #define BRAKE 0
 #define STOP_DRIVE 23  // same as stopppin
-#define RETURN_LIMIT1 (15 + LEAST_COUNT)
-#define RETURN_LIMIT2 (30 + LEAST_COUNT)
+#define RETURN_LIMIT1 (15 + LEAST_COUNT_STEER)
+#define RETURN_LIMIT2 (30 + LEAST_COUNT_STEER)
 
 #define RETRACE_LIMIT1 (15 + LEAST_COUNT_HEADING)
 #define RETRACE_LIMIT2 (30 + LEAST_COUNT_HEADING)
 
-// Pin Declarations for DC Servo
-//#define PULPIN 11
-//#define DIRPIN 8
 
 // Pin Declatartions for Normal DC Motor
-#define DIRPIN 9
+#define DIRPIN 12
 #define PWMPIN 10
-#define BRAKEPIN 12 
+#define BRAKEPIN 9 
 
 #define LEDPIN 13
 #define STOPPIN 23
@@ -58,6 +55,11 @@
 #define AMBIGIOUS 4
 
 #define NUM_OF_READINGS 5
+
+#define EXT_INT1 21
+#define EXT_INT2 5
+
+volatile float steerAngle = 0;
 
 volatile long result1 = 0;
 volatile unsigned char up1 = 0;
@@ -79,7 +81,7 @@ volatile int distSum1 = 0, distSum2 = 0;
 
 volatile int dist[2] ={1000, 1000};
 
-volatile int currentAngle = 0, headingAngle = 0;
+volatile int oldsteerAngle=0, headingAngle = 0;
 volatile int count = 0;
 volatile int flag = 0;
 volatile int Pulse_Count = 0; 
@@ -102,19 +104,26 @@ int theta;
 volatile int dataCnt = 0;
 
 // Variables for path retracing 
-int goal_heading = 0;
-double err_heading = 0;
+
 bool first_heading_data = true;
 
 
 // PID variables
 #define STEER_BRAKE 25 // same as steer_brake 25 
-int previousAngle = 0;
-int goal = 0; 
-float k_p_cw = 1;// 5.0; 
+float previousSteerError = 0;
+float steerGoal = 0;
+float k_p_cw = 3.8;// 5.0; 
 float k_d_cw = 0.6;
-float k_p_ccw = 1; //5.0;
-float k_d_ccw = 0.6;
+float k_p_ccw = 3.8; //5.0;
+float k_d_ccw = 0.7;
+
+int previousHeadingError = 0;
+float headingGoal = 0;
+float kp_h_cw = 1;
+float kd_h_cw = 0;
+float kp_h_ccw = 1;
+float kd_h_ccw = 0;
+
 
 /***********************************************************************************/
 /* BASIC FUNCTIONS */
@@ -168,9 +177,24 @@ ISR(TIMER4_OVF_vect)
     }    
 }
 
-// Echo Interrupt Handler for Left Sonar
-ISR(INT4_vect)
+ISR(INT0_vect)
 {
+  Serial.print(" intr ");
+  if(digitalRead(EXT_INT2)==HIGH)
+  {
+    steerAngle += 0.8; 
+  }
+  else 
+  {
+    steerAngle -= 0.8; 
+  }  
+  
+}
+
+
+// Echo Interrupt Handler for Left Sonar
+void sonar1Int()
+{ Serial.println("ghusa");
   if (running1) 
   { //accept interrupts only when sonar was started
     if (up1 == 0) 
@@ -190,7 +214,7 @@ ISR(INT4_vect)
 }
 
 // Echo Interrupt Handler for Right Sonar
-ISR(INT5_vect)
+void sonar2Int()
 {
   if (running2) 
   { //accept interrupts only when sonar was started
@@ -208,6 +232,16 @@ ISR(INT5_vect)
         running2 = 0;
      }
   }
+}
+
+
+/*************************************************************************************/
+/* Encoder FUNCTIONS */
+
+void enableEncoder()
+{
+  EIMSK |= (1 << INT0);
+  EICRA |= (1 << ISC01) | (1 << ISC00);
 }
 
 /*************************************************************************************/
@@ -377,6 +411,9 @@ void pinInit()
   
   pinMode(LEDPIN, OUTPUT);
   pinMode(STOPPIN, OUTPUT); 
+
+  pinMode(EXT_INT1,INPUT); // pin2 is int0
+  pinMode(EXT_INT2,INPUT); // pin3 is int1
 }
 
 void Init()
@@ -397,6 +434,7 @@ void Init()
   
   enableSonar(1);
   enableSonar(2);
+  enableEncoder();
   
   digitalWrite(STOPPIN, LOW );
   
@@ -435,237 +473,101 @@ void driveMotor(int torque)
 /**************************************************************************************/
 /* PLANNING FUNCTIONS */
 
-void returnToZeroPosition()
-{
-  if(abs(currentAngle) > LEAST_COUNT)   // Returning to ZERO Position. Should be removed when operating along with camera.
-  {
-      Serial.print("  Returning");
-    if(currentAngle < 0)
-    {
-      if(abs(currentAngle) < RETURN_LIMIT1)
-      {
-       driveMotor(-SLOW_DUTY);
-      }
-      else if(abs(currentAngle) < RETURN_LIMIT2)
-      {
-       driveMotor(-MEDIUM_DUTY);
-      }
-      else
-      {
-        driveMotor(-FAST_DUTY);
-      }
-    }
-    else
-    {
-      if(abs(currentAngle) < RETURN_LIMIT1)
-      {
-       driveMotor(SLOW_DUTY);
-      }
-      else if(abs(currentAngle) < RETURN_LIMIT2)
-      {
-       driveMotor(MEDIUM_DUTY);
-      }
-      else
-      {
-        driveMotor(FAST_DUTY);
-      }
-    }
-  } 
-  else
-  {
-   Serial.print("  Free");
-   driveMotor(BRAKE);
-  } 
-}
-
-void followCameraOutput()
-{
-  if(theta < 0 && abs(currentAngle) < ANGLE_LIMIT)
-  {
-    driveMotor(-MEDIUM_DUTY); // Check direction 1 or -1
-  }
-  else if(theta > 0 && abs(currentAngle) < ANGLE_LIMIT)
-  {
-    driveMotor(MEDIUM_DUTY); // Check direction 1 or -1
-  }
-  else
-  {
-    returnToZeroPosition(); 
-  }
-}
 
 // Check and Decide whether Positive theta is towards left or right and vice versa
 void planPath()
 {
-  int sonarOut = sonarOutput();
-       
-  if(sonarOut == FREE)
-  {
-    // Regain Heading using IMU + Magnetometer Data
-    retracePath();
-  }
-  else
-  {
-    if(sonarOut == RIGHT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT && abs(currentAngle) != 1000) 
-    {
-        //turn right to avoid obstacle
-        driveMotor(-MEDIUM_DUTY); // Check direction 1 or -1
-    }
-    else if(sonarOut == LEFT && /*abs(theta) < THETA_LIMIT &&*/ abs(currentAngle) < ANGLE_LIMIT && abs(currentAngle) != 1000)
-    {
-        //turn left to avoid obstacle
-        driveMotor(MEDIUM_DUTY); // Check direction 1 or -1
-    }
-    else if(sonarOut == AMBIGIOUS)
-    {
-      if (dist[0] > STOPPING_THRESHOLD && dist[1] > STOPPING_THRESHOLD)
-      {
-         // turn a/c to nearer one.
-         stopmotor_count = 0; 
-         digitalWrite(STOPPIN,LOW);
-      }
-      else 
-      {
-        stopmotor_count++;
-        if (stopmotor_count > 4)
-        {
-           digitalWrite(STOPPIN, HIGH);
-           Serial.print("Stopping drive");
-        }
-        
-        else
-        {
-           digitalWrite(STOPPIN, LOW); 
-        }
-      }
-    }
-    else
-    {
-      driveMotor(BRAKE);
-    }
-  }
+//  int sonarOut = sonarOutput();
+  gotoHeading(headingGoal);
+
 }
 
-void returnToGoalHeading()
-{
- if(abs(err_heading) > LEAST_COUNT_HEADING )   // Returning to ZERO Position. Should be removed when operating along with camera.
- {
-    Serial.print("  Retracing Heading ");
-    // if prints Retracing heading, but not going left/right => 1. currentAngle crossed angle_limit_heading
-   
-    if(err_heading < 0)
-    {
-      if (currentAngle > -ANGLE_LIMIT_HEADING)
-        {
-          if(abs(err_heading) < RETRACE_LIMIT1)
-          {
-           Serial.print("  Going Slow Left");
-           driveMotor(SLOW_DUTY);
-          }
-          else if(abs(err_heading) < RETRACE_LIMIT2)
-          {
-           Serial.print("  Going Medium Left");
-           driveMotor(MEDIUM_DUTY);
-          }
-          else
-          {
-            Serial.print("  Going Fast Left");
-            driveMotor(FAST_DUTY);
-          }
-        }
-      else
-        {
-          driveMotor(BRAKE);
-        }
-    }
-    else if (err_heading > 0)
-    {
-      if (currentAngle < ANGLE_LIMIT_HEADING)
-        {
-          if(abs(err_heading) < RETRACE_LIMIT1)
-          {
-           Serial.print("  Going Slow Right");
-           driveMotor(-SLOW_DUTY);
-          }
-          else if(abs(err_heading) < RETRACE_LIMIT2)
-          {
-           Serial.print("  Going Medium Right");
-           driveMotor(-MEDIUM_DUTY);
-          }
-          else
-          {
-            Serial.print("  Going Fast Right");
-            driveMotor(-FAST_DUTY);
-          }
-        }
-      else
-        {
-          driveMotor(BRAKE);
-        }  
-    }
-  } 
-  else
-  {
-   returnToZeroPosition();
-  } 
-}
 
-void retracePath()
+void gotoHeading(int goal_heading)
 {
-  // If condition for maintaining the Initial Heading
-  if (first_heading_data)
-  {
-    goal_heading = headingAngle;
-    first_heading_data = false;
-  }
+
+  float error = (goal_heading - headingAngle)*PI_APP/180 ;
+  error = atan2(sin(error),cos(error))*180/PI_APP;
   
-  err_heading = (goal_heading - headingAngle)*PI_APP/180 ;
-  err_heading = atan2(sin(err_heading),cos(err_heading))*180/PI_APP;
- 
-  returnToGoalHeading();
+  float delta_error = (error - previousHeadingError);
+  float integral_error = (error + previousHeadingError);
+  previousHeadingError = error;
+  
+  if (error > LEAST_COUNT_HEADING )
+  { 
+      // goal of gotoAngle should be <=0
+    gotoAngle( -1*( kp_h_cw * error + kd_h_cw * delta_error) );
+    
+  }
+  else if(error <= -1*LEAST_COUNT_HEADING)
+  { 
+      // goal of gotoAngle should be >=0
+    gotoAngle( -1*( kp_h_ccw * error + kd_h_ccw * delta_error) );
+  }
+
 }
 
 /*****************************************************************PID FUNCTIONS***********************************************************************************/
-
+/* Error = reference - setpoint 
+ * d(Error)/dt = Error - previous Error
+ * Integral Error = Error + previous Error 
+ */
+ 
 void gotoAngle(int goal)
 {
-  int error = goal - currentAngle;
-  int delta_error = currentAngle - previousAngle;
+  if (abs(goal) > STEER_ANGLE_LIMIT)
+  {
+    if (goal > 0)
+    {
+      goal = STEER_ANGLE_LIMIT;
+      Serial.print("  goal angle excedded , New goal  = ");Serial.print(STEER_ANGLE_LIMIT);
+    }
 
-  if (error > 0 && abs(currentAngle) < ANGLE_LIMIT)
-  {
-     digitalWrite(STOP_DRIVE,LOW);
-    driveMotor(-( k_p_cw * error + k_d_cw * delta_error));
+    else if(goal < 0 )
+    {
+      goal = -1*STEER_ANGLE_LIMIT;
+      Serial.print("  goal angle excedded , New goal  = ");Serial.print(-1*STEER_ANGLE_LIMIT);
+    }
+    
   }
-  else if(error <= 0 && abs(currentAngle) < ANGLE_LIMIT)
+  
+  float error = goal - steerAngle;
+  float delta_error = (error - previousSteerError);
+  float integral_error = (error + previousSteerError);
+  previousSteerError = error;
+
+
+  if (error > LEAST_COUNT_STEER )
   {
+     Serial.print(" pid sends me to left   ");
      digitalWrite(STOP_DRIVE,LOW);
-    driveMotor(-( k_p_ccw * error + k_d_ccw * delta_error));
+     driveMotor(-1*( k_p_cw * error + k_d_cw * delta_error));
+         
+  }
+  else if(error <= -1*LEAST_COUNT_STEER)
+  {
+        
+    Serial.print(" pid sends me to right  ");
+    digitalWrite(STOP_DRIVE,LOW);
+    driveMotor(-1*( k_p_ccw * error + k_d_ccw * delta_error));
+        
   }
   else 
   {
-    driveMotor(0);
-    digitalWrite(STOP_DRIVE,HIGH);
+     Serial.print(" pid stopped me    ");
+     driveMotor(0);
+     digitalWrite(STOP_DRIVE,HIGH);
   }
-  
-  Serial.print("   error :");
-  Serial.print(error);
-  Serial.print("   delta_error : ");
-  Serial.print(delta_error);
-  Serial.print("   goal :");
-  Serial.println(goal);
 
-  previousAngle = currentAngle;  
 }
+
 /*****************************************************************************************************************************************************************/
 /* PRINT FUNCTIONS */
 
 void _print()
 {
-//   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
-//   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
-//   Serial.print("  SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("  CurrentAngle : "); Serial.println(currentAngle);
+   Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
+   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
 }
 
 void _print2()
@@ -678,7 +580,7 @@ void _print2()
 void _print1()
 {
    Serial.print("SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("  CurrentAngle : "); Serial.println(currentAngle);
+   Serial.print("  steerAngle : "); Serial.println(steerAngle);
 }
 
 /*************************************************************************************/
@@ -690,27 +592,29 @@ void setup()
   Init();
   pinMode(STEER_BRAKE,INPUT);
   pinMode(STOP_DRIVE,OUTPUT);
-  delay(2000);
    
 }
 
 void loop()
 {   
-//  handleObstacle(1);
-//  planPath();
+
+/*  handleObstacle(1);
+  planPath();
 if (digitalRead(STEER_BRAKE) == HIGH)
-{
-  Serial.print("stopping");
-  //driveMotor(0);
+  {
+    Serial.print("stopping");
+    //driveMotor(0);
   }
   
- else { 
-  //Serial.print("ghusa");
-  gotoAngle(goal);}
+ else 
+ { 
+    //Serial.print("ghusa");
+    
+ }*/
+//  planPath();
+//  gotoAngle(steerGoal);
+  _print1();   // Sonar and Angle data currently prints only Angle data
   
-  _print();   // Sonar and Angle data currently prints only Angle data
-  
-  //delay(20);                
 }
 
 /**********************************************************************************/
@@ -728,10 +632,10 @@ int serialEvent1() {
     }
     else if(dataCnt == 1)
     {
-       currentAngle = inData1; 
-       if(currentAngle >= 128)
+       oldsteerAngle = inData1; 
+       if(oldsteerAngle >= 128)
         {
-          currentAngle -= 256;
+          oldsteerAngle -= 256;
         }
        dataCnt = 2;
     }
@@ -743,6 +647,7 @@ int serialEvent1() {
           headingAngle -= 256;
         }
        dataCnt = 3;
+      
     }
     else if(dataCnt == 3 && inData1 == 254) // STOP BYTE
     {
@@ -820,6 +725,3 @@ void handleDataFromPI()
     stringComplete2 = false; 
   } 
 }
-
-/**********************************************************************************/
-
