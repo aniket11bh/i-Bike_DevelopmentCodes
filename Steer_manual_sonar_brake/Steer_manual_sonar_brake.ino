@@ -268,25 +268,6 @@ ISR(INT5_vect)
   }
 }
 
-void tim3_Init()
-{
-  TCCR3A = 0;
-  TCCR3B = 0;
-  
-  TCCR3B |= (1<<CS30); // select internal clock with no prescaling
-  TCNT3 = 0; // reset counter to zero
-  TIMSK3 = 1<<TOIE3; // enable timer interrupt 
-}
-
-void tim4_Init()
-{
-  TCCR4A = 0;
-  TCCR4B = 0;
-  
-  TCCR4B |= (1<<CS40); // select internal clock with no prescaling
-  TCNT4 = 0; // reset counter to zero
-  TIMSK4 = 1<<TOIE4; // enable timer interrupt 
-}
 
 void enableSonar(int num)
 {
@@ -314,7 +295,7 @@ void sonar(int num)
   delayMicroseconds(10);
   resetPin(TRIG1);
   delayMicroseconds(1);
-  running1 = 1;	
+  running1 = 1;  
   }
   else if(num == 2)
   {
@@ -324,8 +305,8 @@ void sonar(int num)
   delayMicroseconds(10);
   resetPin(TRIG2);
   delayMicroseconds(1);
-  running2 = 1;	
-  }		    
+  running2 = 1; 
+  }       
 }
 
 void handleObstacle(int cnt)
@@ -409,6 +390,37 @@ int sonarOutput()
      //digitalWrite(STOPPIN, HIGH); 
      return FREE;
    }
+}
+
+void tim3_Init()
+{
+  TCCR3A = 0;
+  TCCR3B = 0;
+  
+  TCCR3B |= (1<<CS30); // select internal clock with no prescaling
+  TCNT3 = 0; // reset counter to zero
+  TIMSK3 = 1<<TOIE3; // enable timer interrupt 
+}
+
+void tim4_Init()
+{
+  TCCR4A = 0;
+  TCCR4B = 0;
+  
+  TCCR4B |= (1<<CS40); // select internal clock with no prescaling
+  TCNT4 = 0; // reset counter to zero
+  TIMSK4 = 1<<TOIE4; // enable timer interrupt 
+}
+
+void initializeSonar()
+{
+  int m;
+  
+  for(m=0; m<NUM_OF_READINGS; m++)
+  {
+     distData1[m] = 1000;
+     distData2[m] = 1000;
+  } 
 }
 
 void returnToZeroPosition()
@@ -501,122 +513,6 @@ void planPath()
   }
 }
 
-void _print_sonar_data()
-{
-   Serial.print(" SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
-   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
-//   Serial.print("\t exec_time : "); Serial.print(exec_time); 
-}
-
-void _print_pi_data()
-{
-
-      Serial.print("Lati_from_PI : "); Serial.print(lati_str);
-      Serial.print("\t Longi_from_PI : "); Serial.print(longi_str);
-      Serial.print("\t Theta : "); Serial.print(theta);
-}
-
-void _print_angle_data()
-{
-   Serial.print("SeatAngle : "); Serial.print(headingAngle);
-   Serial.print("\t SteeringAngle : "); Serial.print(steerAngle);
-}
-
-void initializeSonar()
-{
-  int m;
-  
-  for(m=0; m<NUM_OF_READINGS; m++)
-  {
-     distData1[m] = 1000;
-     distData2[m] = 1000;
-  } 
-}
-
-void setup()
-{
-  pinMode(ECHO1, INPUT);
-  pinMode(TRIG1, OUTPUT); 
-  pinMode(ECHO2, INPUT);
-  pinMode(TRIG2, OUTPUT);
-  pinMode(LEDPIN, OUTPUT);
-  pinMode(STOPPIN, OUTPUT);
-  
-   // reserve 50 bytes for the inputString2:
-  inputString1.reserve(10); 
-  // reserve 50 bytes for the inputString2:
-  inputString2.reserve(50);
-
-  setPin(DIRPIN);
-  noInterrupts();
-  timInitPWM();
-  tim3_Init();
-  tim4_Init();
-  interrupts(); // enable all(global) interrupts	
-  Serial.begin(115200);
-  Serial1.begin(115200);
-  Serial2.begin(115200);
-  
-  enableSonar(1);
-  enableSonar(2);
-  
-  digitalWrite(STOPPIN, LOW );
-  
-  initializeSonar();
-}
-
-void parse2()
-{
-  int len = inputString2.length();
-  int i=0, j=0, k=0;
-  
-  for(i=0; inputString2[i] != ','; i++)
-  {
-    lati_str += inputString2[i];  
-  }
-  i++;
-  lati_str[i] = '\0';
-  
-  for(j=0; inputString2[i] != ','; i++,j++)
-  {
-    longi_str += inputString2[i];  
-  }
-  i++;
-  j++;
-  longi_str[j] = '\0';
-  
-  for(; inputString2[i] != '$'; i++,k++)
-  {
-     theta_str += inputString2[i]; 
-  }
-  k++;
-  theta_str[k] = '\0';
-  
-  theta = theta_str.toInt();
-}
-
-void sendDestinationDataToDrive()
-{
-  Serial1.print(lati_str);
-  Serial1.print(",");
-  Serial1.print(longi_str);
-  Serial1.print("$");
-}
-
-void handleDataFromPI()
-{
- if (stringComplete2) 
- {
-    //Serial.println(inputString2); 
-    parse2();
-    sendDestinationDataToDrive();
-    inputString2 = "";
-    lati_str = "";
-    longi_str = "";
-    theta_str = "";
-    stringComplete2 = false; 
-  } 
-}
 
 void retracePath()
 {
@@ -678,13 +574,72 @@ void returnToGoalHeading()
 }
 
 
+/*****************************************************************************************************************************************************************/
+/* PRINT FUNCTIONS */
+
+void _print_sonar_data()
+{
+   Serial.print(" SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
+   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
+//   Serial.print("\t exec_time : "); Serial.print(exec_time); 
+}
+
+void _print_pi_data()
+{
+
+      Serial.print("Lati_from_PI : "); Serial.print(lati_str);
+      Serial.print("\t Longi_from_PI : "); Serial.print(longi_str);
+      Serial.print("\t Theta : "); Serial.print(theta);
+}
+
+void _print_angle_data()
+{
+   Serial.print("SeatAngle : "); Serial.print(headingAngle);
+   Serial.print("\t SteeringAngle : "); Serial.print(steerAngle);
+}
+
+
+void setup()
+{
+  pinMode(ECHO1, INPUT);
+  pinMode(TRIG1, OUTPUT); 
+  pinMode(ECHO2, INPUT);
+  pinMode(TRIG2, OUTPUT);
+  
+  pinMode(LEDPIN, OUTPUT);
+  pinMode(STOPPIN, OUTPUT);
+  
+   // reserve 50 bytes for the inputString2:
+  inputString1.reserve(10); 
+  // reserve 50 bytes for the inputString2:
+  inputString2.reserve(50);
+
+  setPin(DIRPIN);
+  noInterrupts();
+  timInitPWM();
+  tim3_Init();
+  tim4_Init();
+  interrupts(); // enable all(global) interrupts  
+  Serial.begin(115200);
+  Serial1.begin(115200);
+  Serial2.begin(115200);
+  
+  enableSonar(1);
+  enableSonar(2);
+  
+  digitalWrite(STOPPIN, LOW );
+  
+  initializeSonar();
+}
+
+
 
 void loop()
 {		
   handleObstacle(1);  // Store sonar data
   
   _print_sonar_data(); Serial.print("\t");   // Sonar data
-  _print_angle_data(); Serial.print("\t");   // Heading and steering angle data
+//  _print_angle_data(); Serial.print("\t");   // Heading and steering angle data
 //  _print_pi_data();                          // Lati and longi from pi
     
   planPath();
@@ -697,6 +652,9 @@ void loop()
  		
   Serial.println();						
 }
+
+/**********************************************************************************/
+/* SERIAL EVENTS  and their HANDLING FUNCTIONS*/
 
 int serialEvent1() {
   while(Serial1.available())
@@ -749,5 +707,61 @@ int serialEvent2() {
       stringComplete2 = true;
     } 
   }
+}
+
+void parse2()
+{
+  int len = inputString2.length();
+  int i=0, j=0, k=0;
+  
+  for(i=0; inputString2[i] != ','; i++)
+  {
+    lati_str += inputString2[i];  
+  }
+  i++;
+  lati_str[i] = '\0';
+  
+  for(j=0; inputString2[i] != ','; i++,j++)
+  {
+    longi_str += inputString2[i];  
+  }
+  i++;
+  j++;
+  longi_str[j] = '\0';
+  
+  for(; inputString2[i] != '$'; i++,k++)
+  {
+     theta_str += inputString2[i]; 
+  }
+  k++;
+  theta_str[k] = '\0';
+  
+  theta = theta_str.toInt();
+}
+
+
+
+void sendDestinationDataToDrive()
+{
+  Serial1.print(lati_str);
+  Serial1.print(",");
+  Serial1.print(longi_str);
+  Serial1.print("$");
+}
+
+
+void handleDataFromPI()
+{
+ if (stringComplete2) 
+ {
+    //Serial.println(inputString2); 
+    parse2();
+    sendDestinationDataToDrive();
+    inputString2 = "";
+    lati_str = "";
+    longi_str = "";
+    theta_str = "";
+    stringComplete2 = false; 
+  } 
 }
 

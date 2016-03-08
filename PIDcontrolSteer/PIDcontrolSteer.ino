@@ -15,8 +15,8 @@ volatile int current_time, start_time;
 #define MAX_RESP_TIME_MS 40        // timeout - max time to wait for low voltage drop (higher value increases measuring distance at the price of slower sampling)
 #define DELAY_BETWEEN_TESTS_US 200 // echo cancelling time between sampling
 
-#define THRESHOLD 10
-#define STOPPING_THRESHOLD 50
+#define THRESHOLD 120
+#define SONAR_DELAY 20
 
 #define LEAST_COUNT_STEER 1
 #define LEAST_COUNT_HEADING 1
@@ -47,9 +47,6 @@ volatile int current_time, start_time;
 #define AMBIGIOUS 4
 
 #define NUM_OF_READINGS 5
-
-#define CH1 21
-#define CH2 5
 
 volatile float steerAngle = 0;
 
@@ -98,13 +95,14 @@ volatile int dataCnt = 0;
 
 
 // PID variables
-#define STEER_BRAKE 25 // same as steer_brake 25
 float previousSteerError = 0;
 float steerGoal = 0;
-float k_p_cw = 3.8;// 5.0;
-float k_d_cw = 0.6;
-float k_p_ccw = 3.8; //5.0;
+float k_p_cw = 3.8; //5.5;//3.95;// 5.0;
+float k_d_cw = 0.6; //0.7
+float k_p_ccw = 3.8; ////5.0;//3.7; //5.0;
 float k_d_ccw = 0.7;
+float k_i_cw = -0.05;
+float k_i_ccw = 0.0;
 
 int previousHeadingError = 0;
 float headingGoal = 0;
@@ -130,7 +128,7 @@ void resetPin(int pin)
 /***********************************************************************************/
 /* INTERRUPT HANDLERS */
 
-// Timer overflow interrupt for Left Sonar
+// Timer overflw interrupt for Left Sonar
 ISR(TIMER3_OVF_vect)
 {
     if (up1)
@@ -166,17 +164,6 @@ ISR(TIMER4_OVF_vect)
     }
 }
 
-ISR(INT0_vect)
-{
-  if(digitalRead(CH2) == HIGH)
-  {
-    steerAngle += 0.8;
-  }
-  else
-  {
-    steerAngle -= 0.8;
-  }
-}
 
 // Echo Interrupt Handler for Left Sonar
 ISR(INT4_vect)
@@ -218,16 +205,6 @@ ISR(INT5_vect)
         running2 = 0;
      }
   }
-}
-
-
-/*************************************************************************************/
-/* Encoder FUNCTIONS */
-
-void enableEncoder()
-{
-  EIMSK |= (1 << INT0);
-  EICRA |= (1 << ISC01) | (1 << ISC00);
 }
 
 /*************************************************************************************/
@@ -297,6 +274,7 @@ void handleObstacle(int cnt)
           dist[0] = DIST_LIMIT;
 
         sonar(1); // launch measurement
+        delay(SONAR_DELAY);
       }
 
       if(running2 == 0)
@@ -319,33 +297,34 @@ void handleObstacle(int cnt)
           dist[1] = DIST_LIMIT;
 
          sonar(2);
+         delay(SONAR_DELAY);
       }
     }
 }
 
 int sonarOutput()
 {
-   if(dist[0] < THRESHOLD && dist[1] < THRESHOLD)   // STOP
+   if(dist[0] < THRESHOLD + 70 && dist[1] < THRESHOLD + 70)   // STOP
    {
 //     digitalWrite(STOPPIN, HIGH);
-     Serial.println("  Both within Threshold");
+//     Serial.println("  Both within Threshold");
      return AMBIGIOUS;
    }
    else if(dist[0] < THRESHOLD && dist[1] > THRESHOLD) // RIGHT
    {
      //digitalWrite(STOPPIN, HIGH);   
-     Serial.println("  Going Right");
+//     Serial.println("  Going Right");
      return RIGHT;
    }
    else if(dist[0] > THRESHOLD && dist[1] < THRESHOLD)  // LEFT
    {
      //digitalWrite(STOPPIN, HIGH); 
-     Serial.println("  Going Left");
+//     Serial.println("  Going Left");
      return LEFT;
    }
    else if(dist[0] > THRESHOLD && dist[1] > THRESHOLD)   // FREE
    {
-     Serial.println("  Free");
+//     Serial.println("  Free");
      return FREE;
    }
 }
@@ -391,16 +370,12 @@ void pinInit()
   pinMode(ECHO2, INPUT);
   pinMode(TRIG2, OUTPUT);
 
-  pinMode(DIRPIN, OUTPUT);
-  pinMode(BRAKEPIN, OUTPUT);
-  pinMode(PWMPIN, OUTPUT);
+//  pinMode(DIRPIN, OUTPUT);
+//  pinMode(BRAKEPIN, OUTPUT);
+//  pinMode(PWMPIN, OUTPUT);
 
   pinMode(LEDPIN, OUTPUT);
 
-  pinMode(CH1,INPUT); // pin2 is int0
-  pinMode(CH2,INPUT); // pin3 is int1
-
-  pinMode(STEER_BRAKE,INPUT);
   pinMode(STOP_DRIVE,OUTPUT);
 
 }
@@ -423,9 +398,8 @@ void Init()
 
   enableSonar(1);
   enableSonar(2);
-  enableEncoder();
 
-  resetPin(STOP_DRIVE);
+//  resetPin(STOP_DRIVE);
 
   initializeSonar();
 }
@@ -473,36 +447,35 @@ void planPath()
     // Regain Heading using IMU + Magnetometer Data
     gotoHeading(headingGoal);
      brakeSignal = 0;
-     Serial.println("clear");
+//     Serial.println("  clear  ");
   }
   else
   {
     if(sonarOut == RIGHT ) 
     {
-    brakeSignal = 0;
-    gotoAngle(20);
+      brakeSignal = 0;
+      gotoAngle(20);
 //       resetPin(STOP_DRIVE); 
-//       gotoAngle(20);
-    Serial.println("right ghumo");
+//      Serial.println("  right ghumo  ");
     }
     else if(sonarOut == LEFT )
     {
-    brakeSignal = 0;
-    gotoAngle(-1*20);
+      brakeSignal = 0;
+      gotoAngle(-1*20);
 //       resetPin(STOP_DRIVE);
-//       gotoAngle(-20);
-   Serial.println("left ghumo");
+//      Serial.println("  left ghumo  ");
     }
     else if(sonarOut == AMBIGIOUS)
     {
 //       setPin(STOP_DRIVE);
-    brakeSignal = 1;
-    driveMotor(0); 
+      brakeSignal = 1;
+      driveMotor(0); 
+//    Serial.println("  full stop  ");
     }
     else
     {
-    brakeSignal = 1;
-    driveMotor(0);
+      brakeSignal = 1;
+      driveMotor(0);
     }
   }
 
@@ -571,7 +544,7 @@ void gotoAngle(int goal)
   {
  //    Serial.print(" Steer moving right  ");
      digitalWrite(STOP_DRIVE,LOW);
-     driveMotor(-1*( k_p_cw * error + k_d_cw * delta_error));
+     driveMotor(-1*( k_p_cw * error + k_d_cw * delta_error + k_i_cw*integral_error));
 
   }
   else if(error <= -1*LEAST_COUNT_STEER)
@@ -579,7 +552,7 @@ void gotoAngle(int goal)
 
   //  Serial.print(" Steer moving left ");
     digitalWrite(STOP_DRIVE,LOW);
-    driveMotor(-1*( k_p_ccw * error + k_d_ccw * delta_error));
+    driveMotor(-1*( k_p_ccw * error + k_d_ccw * delta_error + k_i_ccw*integral_error));
 
   }
   else
@@ -597,7 +570,7 @@ void gotoAngle(int goal)
 void _print()
 {
    Serial.print("  SONAR-1 :"); Serial.print(dist[0]); Serial.print(" cm");
-   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.println(" cm");
+   Serial.print("  SONAR-2 :"); Serial.print(dist[1]); Serial.print(" cm");
 }
 
 void _print2()
@@ -630,7 +603,11 @@ void setup()
 void loop()
 {   
 
-  handleObstacle(1);
+handleObstacle(1);
+_print();
+_print1();
+planPath();
+sendDestinationDataToDrive();
 /*  planPath();
 if (digitalRead(STEER_BRAKE) == HIGH)
   {
@@ -643,10 +620,9 @@ if (digitalRead(STEER_BRAKE) == HIGH)
     //Serial.print("ghusa");
     
  }*/
-    Serial.println(brakeSignal);
 
-  planPath();
-sendDestinationDataToDrive();
+  
+
 
 //  gotoAngle(steerGoal);
 //gotoHeading(headingGoal);
@@ -661,15 +637,14 @@ sendDestinationDataToDrive();
 //   gotoHeading(20);
 //  durationFlag = 0;
 //  }
-  
-//  _print1();   // Sonar and Angle data currently prints only Angle data
  
 }
+
 
 /**********************************************************************************/
 /* SERIAL EVENTS  and their HANDLING FUNCTIONS*/
 
-int serialEvent2() {
+void serialEvent2() {
   while(Serial2.available())
   {
     // get the new byte:
@@ -681,10 +656,10 @@ int serialEvent2() {
     }
     else if(dataCnt == 1)
     {
-       oldsteerAngle = inData1;
-       if(oldsteerAngle >= 128)
+       steerAngle = inData1;
+       if(steerAngle >= 128)
         {
-          oldsteerAngle -= 256;
+          steerAngle -= 256;
         }
        dataCnt = 2;
     }
@@ -705,7 +680,7 @@ int serialEvent2() {
   }
 }
 
-int serialEvent1() {
+void serialEvent1() {
   while(Serial1.available())
   {
     // get the new byte:
@@ -755,15 +730,15 @@ void sendDestinationDataToDrive()
 {
 //  Serial2.print("#");
   Serial2.print(brakeSignal);
-  Serial2.print("$");
+//  Serial2.print("$");
 }
 
 void handleDataFromPI()
 {
  if (stringComplete2)
  {
+    //Serial.println(inputString2); 
     parse2();
-    _print2();
     //sendDestinationDataToDrive();
     inputString2 = "";
     lati_str = "";
@@ -772,3 +747,4 @@ void handleDataFromPI()
     stringComplete2 = false;
   }
 }
+
