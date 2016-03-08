@@ -3,7 +3,7 @@
 #include "compass.h"
 
 #include <TimerOne.h>
-#define MAXTIME 4  // multiply with 0.1 to get actual time set to 4
+#define MAXTIME 3  // multiply with precision to get actual time set to 4
 #define BRAKE_PIN_P 9  
 #define BRAKE_PIN_N 10
 #define PRECISION 100000 // microseconds // 0.1 sec
@@ -13,17 +13,25 @@
 #define dt_s 0.00001
 #define RESTRICT_PITCH // Comment out to restrict roll to ±90deg instead
 
-#define SPEEDPIN 2
 #define STOPPIN 23 // same as stop_drive
 #define MANUAL_BREAK_PIN 22
 
 #define BRAKE_PIN_P 9
 #define BRAKE_PIN_N 10
 
+#define COUNTLIMIT_B 25
+#define COUNTLIMIT_R 50
+
+
+#define CH1 2
+#define CH2 41
+
+volatile float steerAngle = 0;
+
 
 float alpha = 23 * PI_APP/180 , beta = 15 * PI_APP/180 ;
 int count1=0,count2=20;
-bool brakeFlag = LOW;
+bool brakeFlag = LOW, releaseFlag = HIGH;
 int brakeComplete1 = false;
 String brakeString1="";
 
@@ -35,7 +43,7 @@ String gsm_latilongistring="";    //info string in parsing function
 String gsm_string;                 //raw string that is comm to function
 String gsm_lati="", gsm_longi="";
 int gsm_move_status_flag=0;      //moving status flag
-float gsm_v_lati,gsm_v_longi;
+double gsm_v_lati=0,gsm_v_longi=0;
 /*****************************************************************
 Note : gsm_v_lati and gsm_v_longi will store the updated value of lati longi
 obtained from gsm message
@@ -108,6 +116,26 @@ int durationFlag = 0;
 boolean drive_flag = true;
 /****************************************************/
 
+ISR(INT4_vect)
+{
+//  Serial.println("ext int ");
+  if (digitalRead(CH2) == HIGH)
+  {
+    steerAngle -= 0.8;
+  }
+  else
+  {
+    steerAngle += 0.8;
+  }
+}
+
+
+void enableEncoder()
+{
+  EIMSK |= (1 << INT4);
+  EICRB |= (1 << ISC41) | (1 << ISC40);
+}
+
 /*************************************** GPS funcitons ******************************************************/
 
 // Calculates distance between (gpsLat0,gpsLong0) and (gpsLat,gpsLong)
@@ -118,7 +146,7 @@ void Distance(float gpsLat0, float gpsLong0, float gpsLat, float gpsLong)
   g_distance = sqrt(pow(delLat,2)+pow(delLong,2));
 //  if (g_first_data >= gps_count)
     {
-      Serial.print("Distance :"); Serial.print(g_distance); Serial.print("\t");
+//      Serial.print("Distance :"); Serial.print(g_distance); Serial.print("\t");
 //      Serial.print("For  "); Serial.print(gpsLat0); Serial.print(gpsLong0); Serial.print(gpsLat);Serial.print(gpsLong);
     }
 }
@@ -127,26 +155,64 @@ void Distance(float gpsLat0, float gpsLong0, float gpsLat, float gpsLong)
 /******************************GSM starts*************************************/
 void serialEvent3()
 {
+  //Serial.print("entered");
   while(Serial3.available()>0)
   {
-
+    if (count_nl<2)
+    {
     char inchar = (char)Serial3.read();
-    gsm_inputString+= inchar;
-    delayMicroseconds(200);
-
-     if(inchar == '\n')              // counts nl
+    gsm_inputString+= inchar; 
+    //delayMicroseconds(100);
+     
+     if(inchar == '\n')
      count_nl++;
-
-     if (count_nl == 3)
-     {
-     gsm_string = gsm_inputString;
-     gsm_flag=1;
-     Serial.println(gsm_inputString);
-      //Serial.println("here1");     // use for testing gsm
-     count_nl=0;
-     gsm_inputString="";
-     }                               //must print wanted string
-
+    }
+    
+   else if (count_nl == 2)
+    {
+    
+    /*for (char inchar=(char)Serial3.read(); inchar != ',' ;)
+    {
+      gsm_move_status_flag= int(inchar) - 48;
+      Serial.println(gsm_move_status_flag);
+    } */   
+    Serial.println("elseif///////////////////////////////////////////////////");
+    
+    for (char inchar=(char)Serial3.read();inchar!=','; inchar=(char)Serial3.read() )
+    {
+      gsm_lati+=inchar;
+      delayMicroseconds(250);
+    }
+    Serial.print(gsm_lati);
+    
+    for (char inchar=(char)Serial3.read(); inchar!=',';inchar=(char)Serial3.read() )
+    {
+      gsm_longi+=inchar;
+      delayMicroseconds(250);
+    }
+    Serial.print(gsm_longi);
+    
+    for (char inchar=(char)Serial3.read(); inchar!='\n';inchar=(char)Serial3.read() )
+    {
+      delayMicroseconds(50);
+    }
+    
+    count_nl=3;
+    gsm_v_lati= gsm_lati.toFloat();
+    gsm_v_longi= gsm_longi.toFloat();
+    Serial.println(gsm_inputString);
+    Serial.print("lati=");Serial.println(gsm_v_lati,8);
+    Serial.print("longi=");Serial.println(gsm_v_longi,8);
+    gsm_flag=1;  
+    }
+    
+    else
+    {
+      count_nl=0;
+      gsm_inputString="";
+      gsm_flag=0; 
+    }
+    
    }
 }
 
@@ -172,7 +238,7 @@ void call_gsm( String input)
     gsm_latilongistring+=input[i];
   }
   //gsm_latilongistring[j]=',';
-  Serial.println(gsm_latilongistring);         //use for testing gsm
+  //Serial.println(gsm_latilongistring);         //use for testing gsm
   //Parsing lati longi
   for( j=0; gsm_latilongistring[j] !=',' ; j++)
   {
@@ -209,8 +275,11 @@ void call_gsm( String input)
 
 void serialEvent2()
 {
+
+
   while(Serial2.available()>0)
   {
+//    Serial.println("serial 2");
     char inchar = (char)Serial2.read();
     inputString2+= inchar;
 
@@ -280,8 +349,8 @@ void getlatilongi(String input)
         Serial.print("First data Receieved");
     }
 
-   if(LATI != 0 && LONGI != 0 && g_first_data == gps_count && target_lati != 0 && target_longi != 0)
-     Distance(target_lati, target_longi, LATI, LONGI);
+    Distance(gsm_v_lati, gsm_v_longi, LATI, LONGI);
+
 
 }
 
@@ -292,11 +361,11 @@ void gpsInit()
 {
   for(int i=0;i<10;i++)                  //initializing total array zero string to avoid producing garbage values
   {
-    lati[i]='0';
+     lati[i]='0';
     longi[i]='0';
 
   }
-     lati[10]='\0';
+      lati[10]='\0';
      longi[10]='\0';
      delay(100);
 }
@@ -323,92 +392,75 @@ void gps_conditioning()
   }
 }
 
-void parse1()
-{
-  int len = inputString1.length();
-  int i=0, j=0, k=0;
 
-  for(i=0; inputString1[i] != ','; i++)
-  {
-    lati_str += inputString1[i];
-  }
-  i++;
-  lati_str[i] = '\0';
+int bFlag = 0, bCount = 0, rCount = 0;
 
-  for(j=0; inputString1[i] != '$'; i++,j++)
-  {
-    longi_str += inputString1[i];
-  }
-  i++;
-  j++;
-  longi_str[j] = '\0';
-
-  target_lati = lati_str.toFloat();
-  target_longi = longi_str.toFloat();
-}
-
-int bFlag = 0;
 void parseBrake()
 {
- 
-   
-  if (bFlag == 1)
-  {
-    
-  brakeFlag = HIGH;
-  bFlag = 0;
-  }
-  else {
-  
-  brakeFlag = LOW;
-  
-  }
-  
 
+  if (bFlag == 1)
+  { rCount = 0;
+    bCount++;
+     Serial.print("  bcount  :");
+     Serial.println(bCount);
+    if (bCount > COUNTLIMIT_B)
+    {
+      brakeFlag = HIGH;
+      //  controlDrive(0);
+
+      bCount = 0;
+    }
+
+  }
+
+  else if (bFlag == 0)
+  {
+    bCount = 0;
+    rCount++;
+    Serial.print("  rcount  :");
+     Serial.println(rCount);
+    if (rCount > COUNTLIMIT_R)
+    {
+      brakeFlag = LOW;
+      //  controlDrive(0);
+
+      rCount = 0;
+    }
+  }
+ 
 }
+
 void serialEvent1() {
   while (Serial1.available()) {
+//  Serial.println("serial 1");
     // get the new byte:
     char inChar = (char)Serial1.read();
-    // add it to the inputString:
-//    brakeString1 += inChar;
-//Serial.println(brakeString1);
-////   Serial.print("  brake : ");
-////   Serial.print(brakeString1);
-//    // if the incoming character is a newline, set a flagM
-//    // so the main loop can do something about it:
-    if (inChar == '1') {
-bFlag=1;
-
-    } 
-  }
+   
+      if (inChar == '1') 
+          bFlag = 1;
+    
+ else if (inChar == '0') 
+      bFlag = 0;
+ 
+//      Serial.print("  inChar : ");
+//      Serial.print(inChar);
+      
+    
+    }
 }
+
 
 void _print()
 {
       //Serial.print("Lati_from_PI : "); Serial.print(lati_str);
       //Serial.print("\t Longi_from_PI : "); Serial.print(longi_str);
 //      Serial.print("\t Data from PI ");
-//      Serial.print("\t handle angle : "); Serial.print(averageHandleAngle);
+      Serial.print("\t handle angle : "); Serial.print(steerAngle);
       Serial.print("\t heading angle : "); Serial.println(heading);
       //Serial.println();
 
 }
 
-void handleGPSData()
-{
-  // print the string when a newline arrives:
-  if (stringComplete1) {
-    // Serial.println(inputString1);
-    // clear the string:
-    parse1();
-    _print();
-    inputString1 = "";
-    lati_str = "";
-    longi_str = "";
-    stringComplete1 = false;
-  }
-}
 
 
 /***********************************************************END GPS function **************************************/
@@ -420,13 +472,6 @@ void controlDrive(int digitalSpeed)
  Wire.write(0x40); // control byte - turn on DAC (binary 1000000)
  Wire.write(digitalSpeed); // value to send to DAC
  Wire.endTransmission(); // end tranmission
-}
-
-void stopMotor()
-{
-
-
-
 }
 
 
@@ -563,7 +608,7 @@ if (abs(heading - PreviousHeading) > 5 )
 void sendAngleDatatoSteer()
 {
   Serial1.write(255);
-  Serial1.write(23/*(int)averageHandleAngle*/);
+  Serial1.write((int)steerAngle);
   Serial1.write((int)heading);
   Serial1.write(254);
 }
@@ -572,22 +617,6 @@ void sendAngleDatatoSteer()
 
 /*********************************************************** Start BRAKING functions ***************************************/
 
-void CheckBreakingCondition()
-{
-  boolean sonar_stop = digitalRead(STOPPIN);
-  boolean manual_break = LOW;//digitalRead(MANUAL_BREAK_PIN);
-  //Serial.println("checking condition");
-
-  if (sonar_stop || manual_break )
-  {
-    drive_flag = false;
-  }
-
-  else
-  {
-    drive_flag = true;
-  }
-}
 
 /*********************************************************** End BRAKING functions ***************************************/
 void initMotor()
@@ -603,7 +632,7 @@ void claspMotor()
 digitalWrite(BRAKE_PIN_P,LOW);
 digitalWrite(BRAKE_PIN_N,HIGH);
 
- Serial.println("  clasp");
+// Serial.println("  clasp");
 
 
   }
@@ -612,7 +641,7 @@ void stallMotor()
 {
   digitalWrite(BRAKE_PIN_P,LOW);
   digitalWrite(BRAKE_PIN_N,LOW);
-  Serial.println("  stall");
+//  Serial.println("  stall");
 
 }
 
@@ -620,16 +649,10 @@ void releaseMotor()
 {
  digitalWrite(BRAKE_PIN_P,HIGH);
  digitalWrite(BRAKE_PIN_N,LOW);
- Serial.println("  release");
+// Serial.println("  release");
 
   }
 
-
-//void releaseINT()
-//{
-//  //digitalWrite( 13, HIGH);
-////  Switch=1;
-// Timer1.detachInterrupt();   }
 
 
 
@@ -646,6 +669,10 @@ void setup()
   inputString1.reserve(50);
   lati_str.reserve(12);
   longi_str.reserve(12);
+  gsm_latilongistring.reserve(35);    //info string in parsing function
+  gsm_string.reserve(35);                 //raw string that is comm to function
+  gsm_lati.reserve(12);
+  gsm_longi.reserve(12);
 
   Wire.begin();
 
@@ -733,84 +760,100 @@ compass_z_gainError = 8.13;
   controlDrive(0);
  delay(500);
  start_time=millis();
- durationFlag = 1;
-//Serial.println("asd");
+ durationFlag = 100;
+
+/**********************************************************************************/
+  enableEncoder();
+  
+}
+
+
+void driveBLDC(){
+    parseBrake();
+    
+    if (brakeFlag == LOW) {
+
+        controlDrive(80);
+
+    }
+    else if (brakeFlag == HIGH) {
+      controlDrive(0);
+    }
 }
 
 
 void loop()
 {
-  call_gsm(gsm_string);     //calling gsm function
+  _print();
   updateRollPitchYaw();
-  sendAngleDatatoSteer();
   compass_heading();
+  sendAngleDatatoSteer();
+  
+  gps_conditioning();
 
-//  gps_conditioning();
-//  handleGPSData();
-//_print();
-//      parseBrake();
-//      Serial.println( brakeFlag );
- 
-  current_time = millis();
- if ( abs(abs(current_time) - start_time) < 30000 &&  durationFlag <= 2 )
-//   if (abs(g_distance) > 5 && LATI != 0 && LONGI != 0 && target_lati != 0 && target_longi != 0 &&  durationFlag == 1)
+// releaseMotor();
+//  current_time = millis();
+// if ( abs(abs(current_time) - start_time) < 30000 )
+   if (abs(g_distance) > 7 && LATI != 0 && LONGI != 0 && gsm_v_lati != 0 && gsm_v_longi != 0 )
     {
-//    CheckBreakingCondition();
-//
-//    if (drive_flag)
-//    {
-//     brakeFlag = LOW;
-     controlDrive(80);
-     parseBrake();
-//    }
-//
-//    else
-//     { controlDrive(0);
-//      brakeFlag = HIGH;
-//      Serial.println(" yes " );
+     driveBLDC();
     }
 
   
-  else if (durationFlag == 1)
+  else if (abs(g_distance) < 7 && durationFlag == 100)
   {
-    start_time = current_time;
-    durationFlag =2;
+//   start_time = current_time;
+//    controlDrive(0);
+//    durationFlag =2;
   }
-  else if (durationFlag == 2)
-  {
-    start_time = current_time;
-    durationFlag =3;
-  }
+//  if (durationFlag == 0)
+//  {
+//    start_time = current_time;
+//    controlDrive(0);
+//    durationFlag =3;
+//  }
 
-  else if (  durationFlag == 3)
-   {
- applyBrakes(2000);  
+//  else if (  durationFlag == 3)
+//   {
+// applyBrakes(3000);  
 //  Serial.println(" brake " );
-   }
+//   }
 
 //Serial.print("  start_time : ");Serial.print(start_time);Serial.print("  c time :");Serial.println(current_time);
 
 //  if (abs(g_distance) > 5 && LATI != 0 && LONGI != 0 && target_lati != 0 && target_longi != 0)
 //    controlDrive(78);
 //  else
-//    controlDrive(0);
-  //Serial.println();
+//{    controlDrive(0);
+//              Serial.println("  reached:");
+//}
+//  //Serial.println();
 }
 
 void applyBrakes(double Time)
 {
  
-if ( abs(abs(current_time) - start_time) < Time &&  durationFlag == 3 )
+if ( abs(abs(current_time) - start_time) < 2000 &&  durationFlag == 3 )
 {
- controlDrive(0);
- brakeFlag = HIGH;
-Serial.println("brake in");
- }
-else{
-Serial.println("brake out");
+controlDrive(0);
+}
+
+else if (durationFlag == 3)
+{durationFlag = 4;}
+
+else if ( abs(abs(current_time) - start_time) < Time &&  durationFlag == 4 ){
+//Serial.println("brake out");
+controlDrive(0);
+brakeFlag = HIGH;
+}
+
+else if (durationFlag == 4)
+{
 controlDrive(0);
 brakeFlag = LOW;
 }
+
+
   
 }
 
@@ -823,17 +866,18 @@ void timerIsr()
   if (brakeFlag == HIGH && count1 < MAXTIME)
   { 
 //    Serial.print(brakeFlag);
-//     Serial.print("count1: ");
-//     Serial.print(count1);
+     Serial.print(" clasp  count1: ");
+     Serial.println(count1);
      claspMotor();
      count1++;
      count2=0;
   }
   else if (brakeFlag == LOW  && count2 < MAXTIME )
   {
+    releaseFlag == LOW;
 //    Serial.print(brakeFlag);
-//    Serial.print("count2: ");
-//    Serial.print(count2);
+    Serial.print(" release count2: ");
+    Serial.println(count2);
     count2++;
     releaseMotor();
     count1=0;
@@ -847,16 +891,24 @@ void timerIsr()
 //    count = 0;
 //  }
 //
+
+// else if (count2 > MAXTIME || count2 != 20)
+//  {
+//    releaseFlag == HIGH;
+//  }
+
     else {
 //    Serial.print(brakeFlag);
-//    Serial.print("    ");
+//    Serial.println("  stall  ");
 //    Serial.print(count);
+
      stallMotor();
     //count=0;
     }
 
    
 }
+
 
 
 
