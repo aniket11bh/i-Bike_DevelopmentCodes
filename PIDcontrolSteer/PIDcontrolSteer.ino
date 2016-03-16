@@ -1,5 +1,6 @@
 #define F_CPU 16000000
 
+bool ambiFlag = LOW;
 int brakeSignal = 0;
 int durationFlag;
 volatile int current_time, start_time;
@@ -9,13 +10,14 @@ volatile int current_time, start_time;
 #include <avr/interrupt.h>  /* for sei() */
 #include <util/delay.h>     /* for _delay_ms() */
 
+#define MAXAMBI 20
 #define PI_APP 3.14159265359
 
 #define TICKS_PER_MS 15984         // instructions per millisecond (depends on MCU clock, 12MHz current)
 #define MAX_RESP_TIME_MS 40        // timeout - max time to wait for low voltage drop (higher value increases measuring distance at the price of slower sampling)
 #define DELAY_BETWEEN_TESTS_US 200 // echo cancelling time between sampling
 
-#define THRESHOLD 120
+#define THRESHOLD 150
 #define SONAR_DELAY 20
 
 #define LEAST_COUNT_STEER 1
@@ -97,12 +99,23 @@ volatile int dataCnt = 0;
 // PID variables
 float previousSteerError = 0;
 float steerGoal = 0;
-float k_p_cw = 3.8; //5.5;//3.95;// 5.0;
-float k_d_cw = 0.6; //0.7
-float k_p_ccw = 3.8; ////5.0;//3.7; //5.0;
-float k_d_ccw = 0.7;
-float k_i_cw = -0.05;
-float k_i_ccw = 0.0;
+/* pid parameter while going */
+float k_p_g_ccw = 2.5; //5.5;//3.95;// 5.0;
+float k_d_g_ccw = -0.7; //0.7
+float k_i_g_ccw = -0.0;
+
+float k_p_g_cw = 3.0; //5.5;//3.95;// 5.0;
+float k_d_g_cw = 0.6; //0.7
+float k_i_g_cw = 0.0;
+
+/* pid parameter while returning */
+float k_p_r_ccw = 4.0; ////5.0;//3.7; //5.0;
+float k_d_r_ccw = 0.7;
+float k_i_r_ccw = 0.0;
+
+float k_p_r_cw = 3.8; ////5.0;//3.7; //5.0;
+float k_d_r_cw = 0.7;
+float k_i_r_cw = 0.0;
 
 int previousHeadingError = 0;
 float headingGoal = 0;
@@ -304,7 +317,7 @@ void handleObstacle(int cnt)
 
 int sonarOutput()
 {
-   if(dist[0] < THRESHOLD + 70 && dist[1] < THRESHOLD + 70)   // STOP
+   if(dist[0] < THRESHOLD  && dist[1] < THRESHOLD )   // STOP
    {
 //     digitalWrite(STOPPIN, HIGH);
 //     Serial.println("  Both within Threshold");
@@ -445,31 +458,54 @@ void planPath()
   if(sonarOut == FREE)
   {
     // Regain Heading using IMU + Magnetometer Data
+    
+    
     gotoHeading(headingGoal);
-     brakeSignal = 0;
+    if (ambiFlag == HIGH)
+   {
+     ambiFlag = LOW;
+   }
+
+    brakeSignal = 0;
 //     Serial.println("  clear  ");
   }
   else
   {
     if(sonarOut == RIGHT ) 
     {
+     
+     gotoAngle(SONAR_ANGLE_LIMIT -1*headingAngle);
+     
+     
+     if (ambiFlag == HIGH)
+     brakeSignal = 1;
+      else
       brakeSignal = 0;
-      gotoAngle(20);
+     
 //       resetPin(STOP_DRIVE); 
 //      Serial.println("  right ghumo  ");
     }
     else if(sonarOut == LEFT )
     {
+      
+      gotoAngle(-1*(SONAR_ANGLE_LIMIT) + headingAngle );
+     
+     
+     if (ambiFlag == HIGH)
+     brakeSignal = 1;
+      else 
       brakeSignal = 0;
-      gotoAngle(-1*20);
+     
 //       resetPin(STOP_DRIVE);
 //      Serial.println("  left ghumo  ");
     }
     else if(sonarOut == AMBIGIOUS)
     {
 //       setPin(STOP_DRIVE);
+      ambiFlag = HIGH;
       brakeSignal = 1;
       driveMotor(0); 
+      gotoAngle(headingGoal);
 //    Serial.println("  full stop  ");
     }
     else
@@ -539,21 +575,28 @@ void gotoAngle(int goal)
   float integral_error = (error + previousSteerError);
   previousSteerError = error;
 
-
-  if (error > LEAST_COUNT_STEER )
+  Serial.print(" Error : "); Serial.print(error);
+  if (abs(error) > LEAST_COUNT_STEER )
   {
- //    Serial.print(" Steer moving right  ");
-     digitalWrite(STOP_DRIVE,LOW);
-     driveMotor(-1*( k_p_cw * error + k_d_cw * delta_error + k_i_cw*integral_error));
-
-  }
-  else if(error <= -1*LEAST_COUNT_STEER)
-  {
-
-  //  Serial.print(" Steer moving left ");
-    digitalWrite(STOP_DRIVE,LOW);
-    driveMotor(-1*( k_p_ccw * error + k_d_ccw * delta_error + k_i_ccw*integral_error));
-
+  /*  if(error*steerAngle >= 0)
+    {
+       digitalWrite(STOP_DRIVE,LOW);
+       driveMotor(-1*( k_p_g * error + k_d_g * delta_error + k_i_g*integral_error) );
+    }
+    else if(error*steerAngle < 0)
+    {
+       digitalWrite(STOP_DRIVE,LOW);
+       driveMotor(-1*( k_p_r * error + k_d_r * delta_error + k_i_r*integral_error) );
+    }
+   */
+    if(error > 0 && steerAngle >=0)
+      driveMotor(-1*( k_p_g_cw * error + k_d_g_cw * delta_error + k_i_g_cw * integral_error) );
+    else if(error < 0 && steerAngle <=0)
+      driveMotor(-1*( k_p_g_ccw * error + k_d_g_ccw * delta_error + k_i_g_ccw * integral_error) );
+    else if(error > 0 && steerAngle < 0)
+      driveMotor(-1*( k_p_r_cw * error + k_d_r_cw * delta_error + k_i_r_cw * integral_error) );
+    else if(error < 0 && steerAngle > 0)
+      driveMotor(-1*( k_p_r_ccw * error + k_d_r_ccw * delta_error + k_i_r_ccw * integral_error) );
   }
   else
   {
@@ -623,7 +666,7 @@ if (digitalRead(STEER_BRAKE) == HIGH)
 
   
 
-
+//driveMotor(30);
 //  gotoAngle(steerGoal);
 //gotoHeading(headingGoal);
 //
@@ -747,4 +790,5 @@ void handleDataFromPI()
     stringComplete2 = false;
   }
 }
+
 
